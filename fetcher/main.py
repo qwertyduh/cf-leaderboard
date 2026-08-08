@@ -361,6 +361,24 @@ def upsert_problem_results_batch(
         return 0
 
 
+def upsert_submissions_batch(supabase: Client, rows: list[dict]) -> int:
+    """Batch-upsert submissions rows.  Returns count of rows upserted."""
+    if not rows:
+        return 0
+    try:
+        resp = (
+            supabase.table("submissions")
+            .upsert(rows, on_conflict="id")
+            .execute()
+        )
+        return len(resp.data) if resp.data else 0
+    except Exception:
+        logger.exception(
+            "Failed to batch-upsert %d submissions", len(rows)
+        )
+        return 0
+
+
 def write_fetch_log(
     supabase: Client,
     status: str,
@@ -663,6 +681,421 @@ def process_contest_standings(
     return count
 
 
+def recompute_solve_ranks(
+    supabase: Client, affected_pairs: set[tuple[str, str]]
+) -> int:
+    """Assign ``solve_rank`` and ``solve_order`` for every affected pair.
+
+    For each ``(contest_uuid, problem_index)`` pair, queries all accepted
+    submissions ordered by ``creation_time_seconds`` ASC, assigns rank
+    1/2/3..., and updates the matching ``problem_results`` row with
+    ``solve_rank`` and ``solve_order``.
+
+    Score is also computed here as a preliminary value so the row is never
+    left with ``score = 0``, but it will be recalculated by
+    :func:`finalize_scores` once ``wrong_submissions`` is refreshed from
+    the standings API.
+
+    Returns the number of ``problem_results`` rows updated.
+    """
+    if not affected_pairs:
+        return 0
+
+    updated = 0
+
+    for contest_uuid, problem_index in affected_pairs:
+        # ── fetch accepted submissions for this problem (ranked by time) ─
+        try:
+            subs_resp = (
+                supabase.table("submissions")
+                .select("user_id,contest_id,problem_index,creation_time_seconds")
+                .eq("contest_id", contest_uuid)
+                .eq("problem_index", problem_index)
+                .eq("verdict", "OK")
+                .order("creation_time_seconds", desc=False)  # ascending
+                .execute()
+            )
+            subs = subs_resp.data or []
+        except Exception:
+            logger.exception(
+                "Failed to fetch submissions for solve_rank: contest=%s problem=%s",
+                contest_uuid,
+                problem_index,
+            )
+            continue
+
+        if not subs:
+            continue
+
+        # ── fetch matching problem_results (need rating + wrong_submissions) ─
+        try:
+            pr_resp = (
+                supabase.table("problem_results")
+                .select("user_id,problem_rating,wrong_submissions")
+                .eq("contest_id", contest_uuid)
+                .eq("problem_index", problem_index)
+                .eq("solved", True)
+                .execute()
+            )
+            pr_rows = pr_resp.data or []
+        except Exception:
+            logger.exception(
+                "Failed to fetch problem_results for solve_rank: contest=%s problem=%s",
+                contest_uuid,
+                problem_index,
+            )
+            continue
+
+        # Build a lookup keyed by user_id.
+        pr_by_user: dict[str, dict] = {}
+        for pr in pr_rows:
+            pr_by_user[pr["user_id"]] = pr
+
+        # ── assign ranks and compute scores ────────────────────────────
+        update_rows: list[dict] = []
+        for i, sub in enumerate(subs):
+            uid = sub.get("user_id")
+            if not uid:
+                continue
+            pr = pr_by_user.get(uid)
+            if pr is None:
+                # User has a submission but no problem_results row
+                # (shouldn't happen in normal operation — skip).
+                continue
+
+            rank = i + 1
+            score = compute_score(
+                problem_rating=pr.get("problem_rating"),
+                solve_order=rank,
+                wrong_submissions=pr.get("wrong_submissions", 0),
+                solved=True,
+            )
+            update_rows.append(
+                {
+                    "user_id": uid,
+                    "contest_id": contest_uuid,
+                    "problem_index": problem_index,
+                    "solve_rank": rank,
+                    "solve_order": rank,
+                    "score": score,
+                }
+            )
+
+        if update_rows:
+            n = upsert_problem_results_batch(supabase, update_rows)
+            updated += n
+
+    if updated:
+        logger.info(
+            "solve_ranks: %d row(s) updated across %d problem(s)",
+            updated,
+            len(affected_pairs),
+        )
+    return updated
+
+
+def finalize_scores(
+    supabase: Client,
+    affected_pairs: set[tuple[str, str]],
+    tracked_handles: set[str],
+    session: requests.Session,
+    user_cache: dict[str, str],
+    contest_cache: dict[int, str],
+) -> tuple[int, int]:
+    """Refresh ``wrong_submissions`` from standings, then recompute scores.
+
+    For each contest that has affected ``(contest_uuid, problem_index)``
+    pairs, re-fetches ``contest.standings`` to get the current
+    ``rejectedAttemptCount`` for every tracked user, updates
+    ``problem_results.wrong_submissions`` where it changed, and then
+    recomputes ``score`` for every solved row in the affected pair using
+    the now-current ``wrong_submissions`` and ``solve_rank``.
+
+    Returns ``(wrong_submissions_updated, scores_updated)``.
+    """
+    if not affected_pairs:
+        return 0, 0
+
+    # Reverse mapping: contest_uuid → cf_contest_id.
+    uuid_to_cf_id: dict[str, int] = {}
+    for cf_id, uuid_str in contest_cache.items():
+        uuid_to_cf_id[uuid_str] = cf_id
+
+    # Group affected pairs by cf_contest_id.
+    by_contest: dict[int, list[tuple[str, str]]] = {}
+    for contest_uuid, problem_index in affected_pairs:
+        cf_id = uuid_to_cf_id.get(contest_uuid)
+        if cf_id is None:
+            logger.debug(
+                "finalize_scores: contest_uuid %s not in cache — skipping",
+                contest_uuid,
+            )
+            continue
+        by_contest.setdefault(cf_id, []).append((contest_uuid, problem_index))
+
+    wrong_updated = 0
+    scores_updated = 0
+
+    for cf_contest_id, pairs in by_contest.items():
+        # ── re-fetch standings ───────────────────────────────────────
+        cf_data = fetch_contest_standings(cf_contest_id, session)
+        if cf_data is None:
+            logger.warning(
+                "finalize_scores: could not fetch standings for contest %d",
+                cf_contest_id,
+            )
+            continue
+
+        problems = cf_data.get("problems", [])
+        all_rows = cf_data.get("rows", [])
+
+        # Build problem_index → position in the problems array.
+        problem_pos: dict[str, int] = {}
+        for i, p in enumerate(problems):
+            problem_pos[p.get("index", "")] = i
+
+        # Build (handle, problem_index) → rejectedAttemptCount.
+        standings_wa: dict[tuple[str, str], int] = {}
+        for row in all_rows:
+            members = row.get("party", {}).get("members", [])
+            if not members:
+                continue
+            handle = members[0].get("handle", "").lower()
+
+            problem_results = row.get("problemResults", [])
+            for prob_idx, pos in problem_pos.items():
+                if pos >= len(problem_results):
+                    continue
+                standings_wa[(handle, prob_idx)] = (
+                    problem_results[pos].get("rejectedAttemptCount", 0)
+                )
+
+        # ── process each affected pair for this contest ─────────────
+        for contest_uuid, problem_index in pairs:
+            # Fetch all solved problem_results for this pair.
+            try:
+                pr_resp = (
+                    supabase.table("problem_results")
+                    .select(
+                        "id,user_id,problem_rating,solve_rank,"
+                        "wrong_submissions,solved"
+                    )
+                    .eq("contest_id", contest_uuid)
+                    .eq("problem_index", problem_index)
+                    .eq("solved", True)
+                    .execute()
+                )
+                pr_rows = pr_resp.data or []
+            except Exception:
+                logger.exception(
+                    "finalize_scores: failed to fetch problem_results "
+                    "for contest=%s problem=%s",
+                    contest_uuid,
+                    problem_index,
+                )
+                continue
+
+            update_rows: list[dict] = []
+            for pr in pr_rows:
+                # Look up the user's handle.
+                uid = pr.get("user_id")
+                if not uid:
+                    continue
+                # Reverse-lookup handle from user_cache.
+                handle = None
+                for h, u in user_cache.items():
+                    if u == uid:
+                        handle = h
+                        break
+                if handle is None:
+                    continue
+
+                # Get current wrong_submissions from standings.
+                current_wa = standings_wa.get((handle, problem_index), 0)
+                stored_wa = pr.get("wrong_submissions", 0)
+
+                if current_wa != stored_wa:
+                    wrong_updated += 1
+
+                solve_rank = pr.get("solve_rank")
+                new_score = compute_score(
+                    problem_rating=pr.get("problem_rating"),
+                    solve_order=solve_rank,
+                    wrong_submissions=current_wa,
+                    solved=True,
+                )
+
+                update_rows.append(
+                    {
+                        "user_id": uid,
+                        "contest_id": contest_uuid,
+                        "problem_index": problem_index,
+                        "wrong_submissions": current_wa,
+                        "score": new_score,
+                    }
+                )
+
+            if update_rows:
+                n = upsert_problem_results_batch(supabase, update_rows)
+                scores_updated += n
+
+    if wrong_updated or scores_updated:
+        logger.info(
+            "finalize_scores: wrong_submissions_updated=%d, "
+            "scores_updated=%d across %d contest(s)",
+            wrong_updated,
+            scores_updated,
+            len(by_contest),
+        )
+    return wrong_updated, scores_updated
+
+
+def fetch_and_ingest_submissions(
+    supabase: Client,
+    contest_ids: set[int],
+    tracked_handles: set[str],
+    session: requests.Session,
+    user_cache: dict[str, str],
+    contest_cache: dict[int, str],
+) -> tuple[int, int, set[tuple[str, str]]]:
+    """Pull recent OK submissions from ``contest.status`` and assign ranks.
+
+    For each contest in *contest_ids*, pages through ``contest.status``
+    (newest-first, 100 per page) until the oldest ``creationTimeSeconds``
+    in a batch is older than a 20-minute cutoff.  Only accepted submissions
+    from *tracked_handles* are upserted (deduped on CF submission id).
+
+    After ingestion, :func:`recompute_solve_ranks` is called for every
+    ``(contest_id, problem_index)`` that received new rows.
+
+    Returns ``(submissions_ingested, solve_ranks_computed, affected_pairs)``.
+    """
+    cutoff = int(time.time()) - 1200  # 20-minute sliding window
+
+    subs_ingested = 0
+    affected_pairs: set[tuple[str, str]] = set()
+
+    count = 100  # batch size for CF API pagination
+
+    logger.info(
+        "Submissions: checking %d contest(s) for recent OK submissions",
+        len(contest_ids),
+    )
+
+    for cid in sorted(contest_ids):
+        contest_uuid = contest_cache.get(cid)
+        if contest_uuid is None:
+            logger.debug(
+                "Submissions: skipping contest %d — not in cache", cid
+            )
+            continue
+
+        from_idx = 1
+        pages = 0
+
+        while True:
+            url = (
+                f"{CF_BASE_URL}/contest.status"
+                f"?contestId={cid}"
+                f"&from={from_idx}"
+                f"&count={count}"
+            )
+            result = cf_api_request(url, session)
+            if result is None:
+                break
+
+            if not result:  # empty page → done
+                break
+
+            batch_rows: list[dict] = []
+            oldest_in_page = float("inf")
+
+            for sub in result:
+                ct = sub.get("creationTimeSeconds", 0)
+                oldest_in_page = min(oldest_in_page, ct)
+
+                # Filter: OK verdict + tracked user.
+                if sub.get("verdict") != "OK":
+                    continue
+
+                author = sub.get("author", {})
+                members = author.get("members", [])
+                if not members:
+                    continue
+                handle = members[0].get("handle", "").lower()
+                if not handle or handle not in tracked_handles:
+                    continue
+
+                # Ensure user exists.
+                user_uuid = user_cache.get(handle)
+                if user_uuid is None:
+                    display_name = members[0].get("handle")
+                    user_uuid = upsert_user(supabase, handle, display_name)
+                    if user_uuid:
+                        user_cache[handle] = user_uuid
+                    else:
+                        continue
+
+                problem = sub.get("problem", {})
+                problem_index = problem.get("index", "")
+                ct = sub.get("creationTimeSeconds", 0)
+
+                batch_rows.append(
+                    {
+                        "id": sub["id"],
+                        "user_id": user_uuid,
+                        "contest_id": contest_uuid,
+                        "problem_index": problem_index,
+                        "verdict": "OK",
+                        "creation_time_seconds": ct,
+                    }
+                )
+
+            if batch_rows:
+                n = upsert_submissions_batch(supabase, batch_rows)
+                subs_ingested += n
+                for r in batch_rows:
+                    affected_pairs.add(
+                        (contest_uuid, r["problem_index"])
+                    )
+
+            pages += 1
+            from_idx += count
+
+            # Stop condition: oldest submission in this batch is past the
+            # cutoff.  Results are newest-first, so there's nothing newer
+            # on subsequent pages.
+            if oldest_in_page < cutoff:
+                logger.debug(
+                    "Submissions contest %d: oldest ts=%d < cutoff=%d — "
+                    "stopping after %d page(s)",
+                    cid,
+                    int(oldest_in_page),
+                    cutoff,
+                    pages,
+                )
+                break
+
+        if pages:
+            logger.info(
+                "Submissions contest %d: %d page(s) scanned, "
+                "%d new row(s) ingested",
+                cid,
+                pages,
+                subs_ingested,
+            )
+
+    # ── recompute ranks for every affected (contest, problem) pair ────
+    ranks = recompute_solve_ranks(supabase, affected_pairs)
+
+    logger.info(
+        "Submissions step: ingested=%d, solve_ranks_computed=%d",
+        subs_ingested,
+        ranks,
+    )
+    return subs_ingested, ranks, affected_pairs
+
+
 # ---------------------------------------------------------------------------
 # entry point
 # ---------------------------------------------------------------------------
@@ -716,11 +1149,13 @@ def main() -> None:
     h_contests = 0
     h_pr_rows = 0
     h_error: Optional[str] = None
+    h_discovered_contest_ids: set[int] = set()
     tracked_handles: set[str] = set(handles)
 
     if handles:
         try:
             contests = collect_contest_ids(handles, session)
+            h_discovered_contest_ids = set(contests.keys())
             # Drop contests we've already processed so we don't re-fetch
             # standings for them on every run.
             new_contests = {
@@ -823,6 +1258,74 @@ def main() -> None:
     except Exception:
         logger.exception("Scoring step failed")
 
+    # ── submissions ─────────────────────────────────────────────────
+    # Collect every contest we know about: pre-existing (cache),
+    # discovered via handles.txt, and listed in contests.txt.
+    all_contest_ids = (
+        set(contest_cache.keys())
+        | h_discovered_contest_ids
+        | set(contest_ids)
+    )
+    subs_ingested = 0
+    ranks_computed = 0
+    affected_pairs: set[tuple[str, str]] = set()
+    if all_contest_ids and tracked_handles:
+        try:
+            subs_ingested, ranks_computed, affected_pairs = (
+                fetch_and_ingest_submissions(
+                    supabase,
+                    all_contest_ids,
+                    tracked_handles,
+                    session,
+                    user_cache,
+                    contest_cache,
+                )
+            )
+            write_fetch_log(
+                supabase,
+                "success",
+                subs_ingested,
+                None,
+                source="submissions",
+            )
+        except Exception as exc:
+            logger.exception("Submissions step failed")
+            subs_error = (
+                f"{exc.__class__.__name__}: {exc}\n"
+                f"{traceback.format_exc()}"
+            )
+            try:
+                write_fetch_log(
+                    supabase,
+                    "error",
+                    0,
+                    subs_error,
+                    source="submissions",
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to write fetch_log for submissions"
+                )
+
+    # ── finalize scores ──────────────────────────────────────────────
+    # Re-fetch standings to get current wrong_submissions, then
+    # recompute scores for every affected row so solve_rank,
+    # wrong_submissions, and score are all consistent.
+    wrong_updated = 0
+    final_scores = 0
+    if affected_pairs:
+        try:
+            wrong_updated, final_scores = finalize_scores(
+                supabase,
+                affected_pairs,
+                tracked_handles,
+                session,
+                user_cache,
+                contest_cache,
+            )
+        except Exception:
+            logger.exception("finalize_scores step failed")
+
     # ── summary ──────────────────────────────────────────────────────
     total_contests = h_contests + c_contests
     total_pr_rows = h_pr_rows + c_pr_rows
@@ -836,7 +1339,9 @@ def main() -> None:
         "Fetch complete: status=%s, contests_processed=%d "
         "(handles.txt=%d, contests.txt=%d), "
         "problem_results_upserted=%d (handles.txt=%d, contests.txt=%d), "
-        "rows_scored=%d",
+        "rows_scored=%d, "
+        "subs_ingested=%d, solve_ranks_computed=%d, "
+        "wrong_submissions_refreshed=%d, final_scores_updated=%d",
         overall,
         total_contests,
         h_contests,
@@ -845,6 +1350,10 @@ def main() -> None:
         h_pr_rows,
         c_pr_rows,
         scored,
+        subs_ingested,
+        ranks_computed,
+        wrong_updated,
+        final_scores,
     )
     logger.info("=" * 60)
 

@@ -1,11 +1,11 @@
 name: Fetch CF Data
 
 on:
-  schedule:
-    # Every 15 minutes.  GitHub Actions on public repos has no minute
-    # limit for scheduled workflows — this is fine on the free tier.
-    - cron: "*/15 * * * *"
-  # Also let us trigger a run manually from the Actions tab.
+  # Run manually from the Actions tab only — cron is disabled for now.
+  # To re-enable scheduled runs, uncomment the block below:
+  #
+  # schedule:
+  #   - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
