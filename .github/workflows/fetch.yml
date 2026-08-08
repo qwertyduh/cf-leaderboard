@@ -1,0 +1,49 @@
+name: Fetch CF Data
+
+on:
+  schedule:
+    # Every 15 minutes.  GitHub Actions on public repos has no minute
+    # limit for scheduled workflows — this is fine on the free tier.
+    - cron: "*/15 * * * *"
+  # Also let us trigger a run manually from the Actions tab.
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14  # one poll window, leave 1 min buffer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: fetcher
+        run: pip install -r requirements.txt
+
+      - name: Create handles.txt
+        working-directory: fetcher
+        run: |
+          cat > handles.txt << 'EOF'
+          # CF handles to track — edit this list to add/remove users.
+          tourist
+          Benq
+          qwertyduh
+          EOF
+
+      - name: Create contests.txt
+        working-directory: fetcher
+        run: |
+          cat > contests.txt << 'EOF'
+          2253
+          EOF
+
+      - name: Run fetcher
+        working-directory: fetcher
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python main.py

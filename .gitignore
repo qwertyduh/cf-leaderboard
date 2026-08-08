@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+venv/
+.venv/
+fetcher/.venv/
+
+# Environment
+.env
+
+# Mac
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Pytest
+.pytest_cache/
+**/__pycache__/
+
+# Runner logs
+run_loop.log
