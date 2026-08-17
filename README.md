@@ -21,15 +21,19 @@ cf-leaderboard/
 
    **Option A — Supabase Dashboard (easiest)**
    Open the [SQL Editor](https://supabase.com/dashboard/project/wrdwuzmjzcscolhjejtk/sql)
-   and run the four files **in order**:
+   and run the files **in order**:
    1. `supabase/001_tables.sql`
    2. `supabase/002_rls.sql`
    3. `supabase/003_view.sql`
    4. `supabase/004_fetch_log_source.sql`
+   5. `supabase/005_submissions.sql`
+   6. `supabase/006_engagement.sql`
 
    **Option B — psql (if you have the DB password)**
    ```bash
-   for f in supabase/001_tables.sql supabase/002_rls.sql supabase/003_view.sql supabase/004_fetch_log_source.sql; do
+   for f in supabase/001_tables.sql supabase/002_rls.sql supabase/003_view.sql \
+            supabase/004_fetch_log_source.sql supabase/005_submissions.sql \
+            supabase/006_engagement.sql; do
      psql "postgresql://postgres:<db-password>@db.wrdwuzmjzcscolhjejtk.supabase.co:5432/postgres" -f "$f"
    done
    ```
@@ -158,6 +162,50 @@ Existing scores in the database are not automatically recalculated when
 constants change — they'll be refreshed on the next fetcher run (the
 scoring step updates every row where `score = 0`, but already-scored
 rows with the old value will stay as-is until you manually reset them).
+
+### Running the live-engagement features (announcements, schedule, predictions)
+
+The frontend (`frontend/index.html`) reads three organizer-maintained tables
+in addition to the leaderboard. There's no admin UI yet — seed and update
+these directly in the Supabase SQL editor:
+
+**Contest schedule** (drives the phase badge + countdown; one row per phase,
+`phase` must be one of `OPEN` / `SET_B` / `SET_C` / `FREEZE` / `CLOSE`):
+
+```sql
+insert into contest_schedule (phase, label, at_time) values
+  ('OPEN',  'Set A opens',    '2026-09-01 10:00:00+05:30'),
+  ('SET_B', 'Set B unlocks',  '2026-09-01 18:00:00+05:30'),
+  ('SET_C', 'Set C unlocks',  '2026-09-01 23:00:00+05:30'),
+  ('FREEZE','Board freezes',  '2026-09-02 09:00:00+05:30'),
+  ('CLOSE', 'Contest closes', '2026-09-02 10:00:00+05:30')
+on conflict (phase) do update set label = excluded.label, at_time = excluded.at_time;
+```
+
+**Announcements** (pinned rows loop first in the judge-terminal ticker):
+
+```sql
+insert into announcements (body, pinned) values
+  ('Welcome! Set A is live — A1 is a fixed-string warmup, go get your first AC.', true),
+  ('14 people have solved A1 already.', false);
+```
+
+**Predictions** ("The Bookie's Table" — `options` is a JSON array of
+`{"label": ..., "votes": ...}`; update `votes` by hand as the pool settles):
+
+```sql
+insert into predictions (question, options, sort_order) values
+  ('Who reaches 10 solves first?',
+   '[{"label":"tourist_wannabe","votes":9},{"label":"debug_addict","votes":4}]',
+   1),
+  ('Will C8 get solved at all?',
+   '[{"label":"yes","votes":6},{"label":"no","votes":11}]',
+   2);
+```
+
+Rank-over-time history needs no manual seeding — `fetcher/main.py` writes a
+`leaderboard_snapshots` row per user on every run automatically, once
+`006_engagement.sql` has been applied.
 
 ### Running the test suite
 

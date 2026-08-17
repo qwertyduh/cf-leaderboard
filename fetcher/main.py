@@ -469,6 +469,50 @@ def compute_and_update_scores(supabase: Client) -> int:
     return updated
 
 
+def write_leaderboard_snapshot(supabase: Client) -> int:
+    """Snapshot the current standings into ``leaderboard_snapshots``.
+
+    Reads the ``leaderboard`` view (already ranked by ``total_score`` desc)
+    and inserts one row per user with its rank at this moment. This is the
+    data source for the frontend's rank-over-time graph (§6.2 of the
+    contest doc) — every fetcher run adds one more point in history.
+
+    Returns the number of snapshot rows inserted.
+    """
+    try:
+        resp = (
+            supabase.table("leaderboard")
+            .select("user_id,total_score")
+            .order("total_score", desc=True)
+            .execute()
+        )
+        rows = resp.data or []
+    except Exception:
+        logger.exception("Failed to read leaderboard view for snapshot")
+        return 0
+
+    if not rows:
+        return 0
+
+    snapshot_rows = [
+        {
+            "user_id": row["user_id"],
+            "rank": i + 1,
+            "total_score": row["total_score"],
+        }
+        for i, row in enumerate(rows)
+    ]
+
+    try:
+        supabase.table("leaderboard_snapshots").insert(snapshot_rows).execute()
+    except Exception:
+        logger.exception("Failed to write leaderboard_snapshots")
+        return 0
+
+    logger.info("Leaderboard snapshot written: %d row(s)", len(snapshot_rows))
+    return len(snapshot_rows)
+
+
 # ---------------------------------------------------------------------------
 # cache preloading
 # ---------------------------------------------------------------------------
@@ -1326,6 +1370,13 @@ def main() -> None:
         except Exception:
             logger.exception("finalize_scores step failed")
 
+    # ── leaderboard snapshot (rank-over-time source) ────────────────
+    snapshot_rows = 0
+    try:
+        snapshot_rows = write_leaderboard_snapshot(supabase)
+    except Exception:
+        logger.exception("Leaderboard snapshot step failed")
+
     # ── summary ──────────────────────────────────────────────────────
     total_contests = h_contests + c_contests
     total_pr_rows = h_pr_rows + c_pr_rows
@@ -1341,7 +1392,8 @@ def main() -> None:
         "problem_results_upserted=%d (handles.txt=%d, contests.txt=%d), "
         "rows_scored=%d, "
         "subs_ingested=%d, solve_ranks_computed=%d, "
-        "wrong_submissions_refreshed=%d, final_scores_updated=%d",
+        "wrong_submissions_refreshed=%d, final_scores_updated=%d, "
+        "snapshot_rows=%d",
         overall,
         total_contests,
         h_contests,
@@ -1354,6 +1406,7 @@ def main() -> None:
         ranks_computed,
         wrong_updated,
         final_scores,
+        snapshot_rows,
     )
     logger.info("=" * 60)
 
