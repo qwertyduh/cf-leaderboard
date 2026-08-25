@@ -15,6 +15,8 @@ from supabase import Client, create_client
 
 from scoring import compute_score
 
+from cf_auth import build_signed_url
+
 # ---------------------------------------------------------------------------
 # constants
 # ---------------------------------------------------------------------------
@@ -72,7 +74,12 @@ def load_config() -> dict:
             f"Checked .env at: {env_path}"
         )
 
-    return {"SUPABASE_URL": url, "SUPABASE_SERVICE_KEY": key}
+    return {
+        "SUPABASE_URL": url,
+        "SUPABASE_SERVICE_KEY": key,
+        "CF_API_KEY": os.environ.get("CF_API_KEY", ""),
+        "CF_API_SECRET": os.environ.get("CF_API_SECRET", ""),
+    }
 
 
 def init_supabase(url: str, service_key: str) -> Client:
@@ -256,7 +263,11 @@ def fetch_user_ratings(
 
 
 def fetch_contest_standings(
-    contest_id: int, session: requests.Session
+    contest_id: int,
+    session: requests.Session,
+    authenticated: bool = False,
+    api_key: Optional[str] = None,
+    api_secret: Optional[str] = None,
 ) -> Optional[dict]:
     """Fetch full contest standings (all participants).
 
@@ -265,10 +276,30 @@ def fetch_contest_standings(
     standings for unauthenticated requests.  Callers must filter the
     returned rows down to the handles they care about.
 
+    When ``authenticated`` is true the request is signed via
+    :func:`cf_auth.build_signed_url` — required for mashup contests listed
+    in ``contests.txt``.  Otherwise it is an unauthenticated public request.
+
     Returns the full ``result`` dict (keys: ``contest``, ``problems``,
     ``rows``) or ``None`` on failure.
     """
-    url = f"{CF_BASE_URL}/contest.standings?contestId={contest_id}"
+    if authenticated:
+        if not api_key or not api_secret:
+            logger.warning(
+                "Cannot fetch standings for mashup contest %d: "
+                "CF_API_KEY / CF_API_SECRET not configured",
+                contest_id,
+            )
+            return None
+        url = build_signed_url(
+            "contest.standings",
+            {"contestId": contest_id},
+            api_key,
+            api_secret,
+        )
+    else:
+        url = f"{CF_BASE_URL}/contest.standings?contestId={contest_id}"
+
     result = cf_api_request(url, session)
     if result is None:
         logger.warning(
@@ -598,6 +629,9 @@ def process_contest_standings(
     session: requests.Session,
     user_cache: dict[str, str],
     contest_cache: dict[int, str],
+    authenticated: bool = False,
+    api_key: Optional[str] = None,
+    api_secret: Optional[str] = None,
 ) -> int:
     """Fetch standings for one contest and upsert data.
 
@@ -607,7 +641,9 @@ def process_contest_standings(
 
     Returns the number of problem_result rows upserted.
     """
-    cf_data = fetch_contest_standings(contest_id, session)
+    cf_data = fetch_contest_standings(
+        contest_id, session, authenticated, api_key, api_secret
+    )
     if cf_data is None:
         return 0
 
@@ -845,6 +881,9 @@ def finalize_scores(
     session: requests.Session,
     user_cache: dict[str, str],
     contest_cache: dict[int, str],
+    mashup_contest_ids: set[int],
+    api_key: Optional[str],
+    api_secret: Optional[str],
 ) -> tuple[int, int]:
     """Refresh ``wrong_submissions`` from standings, then recompute scores.
 
@@ -882,7 +921,10 @@ def finalize_scores(
 
     for cf_contest_id, pairs in by_contest.items():
         # ── re-fetch standings ───────────────────────────────────────
-        cf_data = fetch_contest_standings(cf_contest_id, session)
+        authenticated = cf_contest_id in mashup_contest_ids
+        cf_data = fetch_contest_standings(
+            cf_contest_id, session, authenticated, api_key, api_secret
+        )
         if cf_data is None:
             logger.warning(
                 "finalize_scores: could not fetch standings for contest %d",
@@ -1001,6 +1043,9 @@ def fetch_and_ingest_submissions(
     session: requests.Session,
     user_cache: dict[str, str],
     contest_cache: dict[int, str],
+    mashup_contest_ids: set[int],
+    api_key: Optional[str],
+    api_secret: Optional[str],
 ) -> tuple[int, int, set[tuple[str, str]]]:
     """Pull recent OK submissions from ``contest.status`` and assign ranks.
 
@@ -1038,12 +1083,27 @@ def fetch_and_ingest_submissions(
         pages = 0
 
         while True:
-            url = (
-                f"{CF_BASE_URL}/contest.status"
-                f"?contestId={cid}"
-                f"&from={from_idx}"
-                f"&count={count}"
-            )
+            if cid in mashup_contest_ids:
+                if not api_key or not api_secret:
+                    logger.warning(
+                        "Skipping contest.status for mashup contest %d: "
+                        "CF_API_KEY / CF_API_SECRET not configured",
+                        cid,
+                    )
+                    break
+                url = build_signed_url(
+                    "contest.status",
+                    {"contestId": cid, "from": from_idx, "count": count},
+                    api_key,
+                    api_secret,
+                )
+            else:
+                url = (
+                    f"{CF_BASE_URL}/contest.status"
+                    f"?contestId={cid}"
+                    f"&from={from_idx}"
+                    f"&count={count}"
+                )
             result = cf_api_request(url, session)
             if result is None:
                 break
@@ -1189,6 +1249,18 @@ def main() -> None:
             ", ".join(str(c) for c in contest_ids),
         )
 
+    # CF credentials + the set of mashup contests (from contests.txt) that
+    # require signed requests.  Public contests from handles.txt don't.
+    cf_api_key = config.get("CF_API_KEY") or None
+    cf_api_secret = config.get("CF_API_SECRET") or None
+    mashup_contest_ids: set[int] = set(contest_ids)
+    if mashup_contest_ids and not (cf_api_key and cf_api_secret):
+        logger.warning(
+            "Mashup contests configured but CF_API_KEY / CF_API_SECRET "
+            "are missing — signed requests for %s will fail",
+            mashup_contest_ids,
+        )
+
     # ── handles.txt path ─────────────────────────────────────────────
     h_contests = 0
     h_pr_rows = 0
@@ -1269,6 +1341,9 @@ def main() -> None:
                     session,
                     user_cache,
                     contest_cache,
+                    authenticated=True,
+                    api_key=cf_api_key,
+                    api_secret=cf_api_secret,
                 )
                 c_pr_rows += count
                 c_contests += 1
@@ -1323,6 +1398,9 @@ def main() -> None:
                     session,
                     user_cache,
                     contest_cache,
+                    mashup_contest_ids,
+                    cf_api_key,
+                    cf_api_secret,
                 )
             )
             write_fetch_log(
@@ -1366,6 +1444,9 @@ def main() -> None:
                 session,
                 user_cache,
                 contest_cache,
+                mashup_contest_ids,
+                cf_api_key,
+                cf_api_secret,
             )
         except Exception:
             logger.exception("finalize_scores step failed")

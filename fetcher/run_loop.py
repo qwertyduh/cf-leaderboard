@@ -20,8 +20,8 @@ from pathlib import Path
 # config
 # ---------------------------------------------------------------------------
 
-POLL_MINUTES = 15
-RUN_TIMEOUT_SECONDS = 14 * 60  # kill if a single run exceeds this
+POLL_MINUTES = 0.5
+RUN_TIMEOUT_SECONDS = 2 * 60  # kill if a single run exceeds this
 FETCHER_DIR = Path(__file__).resolve().parent
 MAIN_SCRIPT = FETCHER_DIR / "main.py"
 LOG_FILE = FETCHER_DIR / "run_loop.log"

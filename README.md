@@ -16,7 +16,10 @@ cf-leaderboard/
 ## Setup
 
 1. `cd fetcher && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
-2. Copy `.env.example` to `.env` and fill in your Supabase credentials (CF API needs no key).
+2. Copy `.env.example` to `.env` and fill in your Supabase credentials.
+   Public contests and `handles.txt`-driven calls need no CF key; fetching
+   private/mashup contests (listed in `contests.txt`) requires `CF_API_KEY`
+   and `CF_API_SECRET`.
 3. Run the migrations in `supabase/` against your Supabase project:
 
    **Option A — Supabase Dashboard (easiest)**
