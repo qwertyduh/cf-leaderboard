@@ -31,12 +31,17 @@ cf-leaderboard/
    4. `supabase/004_fetch_log_source.sql`
    5. `supabase/005_submissions.sql`
    6. `supabase/006_engagement.sql`
+   7. `supabase/007_problems.sql`
+   8. `supabase/008_leaderboard_tiebreakers.sql`
+   9. `supabase/009_snapshot_solved_reveal.sql`
 
    **Option B — psql (if you have the DB password)**
    ```bash
    for f in supabase/001_tables.sql supabase/002_rls.sql supabase/003_view.sql \
             supabase/004_fetch_log_source.sql supabase/005_submissions.sql \
-            supabase/006_engagement.sql; do
+            supabase/006_engagement.sql supabase/007_problems.sql \
+            supabase/008_leaderboard_tiebreakers.sql \
+            supabase/009_snapshot_solved_reveal.sql; do
      psql "postgresql://postgres:<db-password>@db.wrdwuzmjzcscolhjejtk.supabase.co:5432/postgres" -f "$f"
    done
    ```
@@ -142,29 +147,66 @@ This pulls every participant in that contest into the leaderboard, not
 just the handles from `handles.txt`.  The contest ID is visible in the
 CF URL: `https://codeforces.com/contest/2253` → ID is `2253`.
 
-### Changing the scoring formula
+### Scoring model (contest doc §4)
 
-All tunable constants are at the top of `fetcher/scoring.py`:
+Scoring lives in `fetcher/scoring.py` and implements the §4 model:
 
-```python
-BASE_SCORE = 100
-TOP3_MULTIPLIER = 1.5
-PENALTY_FLOOR = 0.6
-PENALTY_PER_WRONG = 0.1
-```
+- **Base points** come from each problem's `(set, slot)` tag in the `problems`
+  table (§4.1) — *not* the Codeforces problem rating. Set A / B / C and slots
+  1–8 map to the fixed 100–600 table; set totals are 1150 / 2300 / 3450
+  (max 6900).
+- **Wrong-answer decay** `max(0.4, 1 - 0.15 · W)` (§4.2). Compilation errors
+  are excluded — the fetcher counts wrong submissions from `contest.status`
+  verdicts and skips `COMPILATION_ERROR`.
+- **First-solver multiplier** 1.20 / 1.12 / 1.06 for the 1st / 2nd / 3rd solver
+  of each problem (§4.3).
 
-Edit the values, then run the tests to make sure nothing broke:
+`problem_results` is a **deterministic projection** recomputed from the stored
+`submissions` on every run, so a formula change just needs a recompute — no
+manual row resets. After editing constants:
 
 ```bash
-cd fetcher
-source .venv/bin/activate
-python -m pytest test_scoring.py -v
+cd fetcher && source .venv/bin/activate
+python -m pytest test_scoring.py -v   # verify the §4 model + worked example
+python recompute.py                   # re-score every contest from stored subs
 ```
 
-Existing scores in the database are not automatically recalculated when
-constants change — they'll be refreshed on the next fetcher run (the
-scoring step updates every row where `score = 0`, but already-scored
-rows with the old value will stay as-is until you manually reset them).
+### Seeding the problem catalog (base points + problem index)
+
+Scoring and the frontend problem index both read the `problems` table. Seed one
+row per problem (get the contest UUID from `select id from contests where
+cf_contest_id = <id>`):
+
+```sql
+insert into problems (contest_id, problem_index, problem_set, slot, title, theme, link, learn_more) values
+  ('<contest-uuid>', 'A', 'A', 1, 'Hello, Fresher', 'JEE / pre-college',
+   'https://codeforces.com/...',
+   '[{"label":"print() basics","url":"https://www.geeksforgeeks.org/..."}]'),
+  ('<contest-uuid>', 'B', 'A', 2, 'Attendance Shortage', 'campus life',
+   'https://codeforces.com/...', '[]')
+on conflict (contest_id, problem_index) do update
+  set problem_set = excluded.problem_set, slot = excluded.slot,
+      title = excluded.title, theme = excluded.theme,
+      link = excluded.link, learn_more = excluded.learn_more;
+```
+
+Problems left untagged score at a safe default base (100) until you add them.
+
+### Manual recompute / CSV fallback (contest doc §5.3)
+
+`fetcher/recompute.py` is the mandatory override path. It rebuilds every
+`problem_results` row from stored submissions and refreshes the leaderboard
+snapshot — deterministic and re-runnable:
+
+```bash
+cd fetcher && source .venv/bin/activate
+python recompute.py                 # recompute from stored submissions
+python recompute.py --csv dump.csv  # import a CSV submission dump, then recompute
+```
+
+CSV header: `submission_id,handle,cf_contest_id,problem_index,verdict,creation_time_seconds`.
+Use `--csv` when the live CF API path fails mid-contest — keep a fresh dump on
+hand so the fallback is usable within ten minutes.
 
 ### Running the live-engagement features (announcements, schedule, predictions)
 
@@ -173,7 +215,10 @@ in addition to the leaderboard. There's no admin UI yet — seed and update
 these directly in the Supabase SQL editor:
 
 **Contest schedule** (drives the phase badge + countdown; one row per phase,
-`phase` must be one of `OPEN` / `SET_B` / `SET_C` / `FREEZE` / `CLOSE`):
+`phase` is one of `OPEN` / `SET_B` / `SET_C` / `FREEZE` / `REVEAL` / `CLOSE`).
+The board **freezes** at `FREEZE` and shows the T+23h snapshot until `REVEAL`
+(§4.5) — the live standings and per-problem grid stop updating in between. Omit
+the `REVEAL` row and the board simply stays frozen after `FREEZE`.
 
 ```sql
 insert into contest_schedule (phase, label, at_time) values
@@ -181,7 +226,8 @@ insert into contest_schedule (phase, label, at_time) values
   ('SET_B', 'Set B unlocks',  '2026-09-01 18:00:00+05:30'),
   ('SET_C', 'Set C unlocks',  '2026-09-01 23:00:00+05:30'),
   ('FREEZE','Board freezes',  '2026-09-02 09:00:00+05:30'),
-  ('CLOSE', 'Contest closes', '2026-09-02 10:00:00+05:30')
+  ('CLOSE', 'Contest closes', '2026-09-02 10:00:00+05:30'),
+  ('REVEAL','Final standings','2026-09-02 11:00:00+05:30')
 on conflict (phase) do update set label = excluded.label, at_time = excluded.at_time;
 ```
 

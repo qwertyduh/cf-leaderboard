@@ -1,4 +1,19 @@
-"""cf-leaderboard fetcher — pulls Codeforces data and writes to Supabase."""
+"""cf-leaderboard fetcher — pulls Codeforces data and writes to Supabase.
+
+Design (per contest-documentation.md §4, §5):
+
+* **contest.status is the scoring source (§5.2).**  Every judged submission
+  (accepted *and* rejected) is ingested into the ``submissions`` table.  The
+  ``problem_results`` table is a *deterministic projection* recomputed from
+  those stored submissions — so a re-run, a formula change, or a CSV import
+  (``recompute.py``, §5.3) all produce identical, re-runnable results (§13).
+* **contest.standings is used only for metadata** — contest name / start /
+  duration and the participant roster for ``contests.txt`` contests.  It is no
+  longer the source of solved / wrong-submission data.
+* **Scoring is the §4 model** — base points from each problem's ``(set, slot)``
+  tag in the ``problems`` table, ``max(0.4, 1 - 0.15·W)`` decay with compilation
+  errors excluded, and graduated 1.20 / 1.12 / 1.06 first-solver multipliers.
+"""
 
 import logging
 import os
@@ -14,7 +29,6 @@ from dotenv import load_dotenv
 from supabase import Client, create_client
 
 from scoring import compute_score
-
 from cf_auth import build_signed_url
 
 # ---------------------------------------------------------------------------
@@ -25,6 +39,28 @@ CF_BASE_URL = "https://codeforces.com/api"
 RATE_LIMIT_SECONDS = 2.0
 MAX_RETRIES = 3
 REQUEST_TIMEOUT = 30
+
+STATUS_PAGE_SIZE = 1000   # contest.status rows per page
+MAX_STATUS_PAGES = 50     # safety cap on a single contest's status scan
+
+# Verdicts that count as a "wrong submission" for decay (§4.2) and the
+# total-wrong tiebreaker (§4.4).  COMPILATION_ERROR is deliberately absent —
+# the doc excludes compile errors.  Anything not listed here and not "OK"
+# (TESTING, SKIPPED, etc.) is ignored.
+WRONG_VERDICTS = frozenset(
+    {
+        "WRONG_ANSWER",
+        "TIME_LIMIT_EXCEEDED",
+        "RUNTIME_ERROR",
+        "MEMORY_LIMIT_EXCEEDED",
+        "IDLENESS_LIMIT_EXCEEDED",
+        "PRESENTATION_ERROR",
+        "CHALLENGED",
+        "REJECTED",
+        "PARTIAL",
+        "FAILED",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # logging
@@ -61,7 +97,7 @@ logger = setup_logging()
 
 
 def load_config() -> dict:
-    """Load SUPABASE_URL and SUPABASE_SECRET_KEY from .env in the project root."""
+    """Load Supabase + optional Codeforces credentials from .env."""
     env_path = Path(__file__).resolve().parent.parent / ".env"
     load_dotenv(dotenv_path=env_path)
 
@@ -88,16 +124,12 @@ def init_supabase(url: str, service_key: str) -> Client:
 
 
 # ---------------------------------------------------------------------------
-# handles file
+# input files
 # ---------------------------------------------------------------------------
 
 
 def load_handles(filepath: Path) -> list[str]:
-    """Read CF handles from a text file, one per line.
-
-    Skips blank lines and lines starting with ``#``.  Returns lowercased,
-    deduplicated handles.
-    """
+    """Read CF handles from a text file, one per line (lowercased, deduped)."""
     if not filepath.exists():
         raise RuntimeError(f"Handles file not found: {filepath}")
 
@@ -109,7 +141,6 @@ def load_handles(filepath: Path) -> list[str]:
             continue
         handles.append(stripped.lower())
 
-    # Deduplicate while preserving order.
     seen: set[str] = set()
     unique: list[str] = []
     for h in handles:
@@ -124,11 +155,7 @@ def load_handles(filepath: Path) -> list[str]:
 
 
 def load_contest_ids(filepath: Path) -> list[int]:
-    """Read CF contest IDs from a text file, one per line.
-
-    Skips blank lines and lines starting with ``#``.  Returns an empty
-    list if the file is missing (making contests.txt optional).
-    """
+    """Read CF contest IDs from a text file, one per line (optional file)."""
     if not filepath.exists():
         logger.info("Contests file not found (%s) — skipping", filepath)
         return []
@@ -167,11 +194,9 @@ def _rate_limit_wait() -> None:
 
 
 def cf_api_request(url: str, session: requests.Session) -> Optional[dict]:
-    """Make a rate-limited GET request to the Codeforces API.
+    """Make a rate-limited, retrying GET request to the Codeforces API.
 
-    Retries up to ``MAX_RETRIES`` times on transient failures (timeouts,
-    429, 5xx) with exponential backoff.  Returns the ``result`` field of
-    the JSON envelope on success, or ``None`` on unrecoverable failure.
+    Returns the ``result`` field of the JSON envelope, or ``None`` on failure.
     """
     global _last_request_time
 
@@ -198,9 +223,7 @@ def cf_api_request(url: str, session: requests.Session) -> Optional[dict]:
                 )
                 time.sleep(wait)
                 continue
-            logger.error(
-                "All %d retries exhausted for: %s", MAX_RETRIES, url
-            )
+            logger.error("All %d retries exhausted for: %s", MAX_RETRIES, url)
             return None
 
         if resp.status_code in retryable_statuses:
@@ -224,7 +247,6 @@ def cf_api_request(url: str, session: requests.Session) -> Optional[dict]:
             )
             return None
 
-        # Parse the CF JSON envelope.
         try:
             data = resp.json()
         except ValueError:
@@ -233,9 +255,7 @@ def cf_api_request(url: str, session: requests.Session) -> Optional[dict]:
 
         if data.get("status") != "OK":
             comment = data.get("comment", "no comment")
-            logger.warning(
-                "CF API returned FAILED: %s (url: %s)", comment, url
-            )
+            logger.warning("CF API returned FAILED: %s (url: %s)", comment, url)
             return None
 
         return data["result"]
@@ -246,19 +266,11 @@ def cf_api_request(url: str, session: requests.Session) -> Optional[dict]:
 def fetch_user_ratings(
     handle: str, session: requests.Session
 ) -> Optional[list[dict]]:
-    """Fetch a user's contest-rating history from Codeforces.
-
-    Returns:
-        * A list of rating-change dicts on success.
-        * An empty list when the handle is valid but has zero rated contests.
-        * ``None`` when the API call itself failed.
-    """
+    """Fetch a user's contest-rating history from Codeforces."""
     url = f"{CF_BASE_URL}/user.rating?handle={handle}"
     result = cf_api_request(url, session)
     if result is None:
-        logger.warning(
-            "Could not fetch rating history for handle: %s", handle
-        )
+        logger.warning("Could not fetch rating history for handle: %s", handle)
     return result
 
 
@@ -269,19 +281,10 @@ def fetch_contest_standings(
     api_key: Optional[str] = None,
     api_secret: Optional[str] = None,
 ) -> Optional[dict]:
-    """Fetch full contest standings (all participants).
-
-    We intentionally do **not** pass ``handles`` or ``showUnofficial``
-    because the CF API rejects extra parameters on non-gym contest
-    standings for unauthenticated requests.  Callers must filter the
-    returned rows down to the handles they care about.
+    """Fetch contest standings — used for metadata and roster only (§5.2).
 
     When ``authenticated`` is true the request is signed via
-    :func:`cf_auth.build_signed_url` — required for mashup contests listed
-    in ``contests.txt``.  Otherwise it is an unauthenticated public request.
-
-    Returns the full ``result`` dict (keys: ``contest``, ``problems``,
-    ``rows``) or ``None`` on failure.
+    :func:`cf_auth.build_signed_url` (required for mashup contests).
     """
     if authenticated:
         if not api_key or not api_secret:
@@ -292,20 +295,40 @@ def fetch_contest_standings(
             )
             return None
         url = build_signed_url(
-            "contest.standings",
-            {"contestId": contest_id},
-            api_key,
-            api_secret,
+            "contest.standings", {"contestId": contest_id}, api_key, api_secret
         )
     else:
         url = f"{CF_BASE_URL}/contest.standings?contestId={contest_id}"
 
     result = cf_api_request(url, session)
     if result is None:
-        logger.warning(
-            "Could not fetch standings for contest %d", contest_id
-        )
+        logger.warning("Could not fetch standings for contest %d", contest_id)
     return result
+
+
+def build_status_url(
+    contest_id: int,
+    from_idx: int,
+    count: int,
+    authenticated: bool,
+    api_key: Optional[str],
+    api_secret: Optional[str],
+) -> Optional[str]:
+    """Build a (possibly signed) ``contest.status`` URL, or ``None`` if a
+    mashup is requested without credentials."""
+    if authenticated:
+        if not api_key or not api_secret:
+            return None
+        return build_signed_url(
+            "contest.status",
+            {"contestId": contest_id, "from": from_idx, "count": count},
+            api_key,
+            api_secret,
+        )
+    return (
+        f"{CF_BASE_URL}/contest.status"
+        f"?contestId={contest_id}&from={from_idx}&count={count}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -321,10 +344,7 @@ def upsert_user(
         resp = (
             supabase.table("users")
             .upsert(
-                {
-                    "cf_handle": cf_handle,
-                    "display_name": display_name or cf_handle,
-                },
+                {"cf_handle": cf_handle, "display_name": display_name or cf_handle},
                 on_conflict="cf_handle",
             )
             .execute()
@@ -366,16 +386,12 @@ def upsert_contest(
         if row:
             return row["id"]
     except Exception:
-        logger.exception(
-            "Failed to upsert contest: %d (%s)", cf_contest_id, name
-        )
+        logger.exception("Failed to upsert contest: %d (%s)", cf_contest_id, name)
     return None
 
 
-def upsert_problem_results_batch(
-    supabase: Client, rows: list[dict]
-) -> int:
-    """Batch-upsert problem_results rows.  Returns count of rows upserted."""
+def upsert_problem_results_batch(supabase: Client, rows: list[dict]) -> int:
+    """Batch-upsert problem_results rows.  Returns count upserted."""
     if not rows:
         return 0
     try:
@@ -386,14 +402,12 @@ def upsert_problem_results_batch(
         )
         return len(resp.data) if resp.data else 0
     except Exception:
-        logger.exception(
-            "Failed to batch-upsert %d problem_results", len(rows)
-        )
+        logger.exception("Failed to batch-upsert %d problem_results", len(rows))
         return 0
 
 
 def upsert_submissions_batch(supabase: Client, rows: list[dict]) -> int:
-    """Batch-upsert submissions rows.  Returns count of rows upserted."""
+    """Batch-upsert submissions rows.  Returns count upserted."""
     if not rows:
         return 0
     try:
@@ -404,9 +418,7 @@ def upsert_submissions_batch(supabase: Client, rows: list[dict]) -> int:
         )
         return len(resp.data) if resp.data else 0
     except Exception:
-        logger.exception(
-            "Failed to batch-upsert %d submissions", len(rows)
-        )
+        logger.exception("Failed to batch-upsert %d submissions", len(rows))
         return 0
 
 
@@ -419,10 +431,7 @@ def write_fetch_log(
 ) -> None:
     """Write a row to the fetch_log table."""
     try:
-        row: dict = {
-            "status": status,
-            "contests_processed": contests_processed,
-        }
+        row: dict = {"status": status, "contests_processed": contests_processed}
         if error:
             row["error"] = error
         if source:
@@ -438,114 +447,8 @@ def write_fetch_log(
         logger.exception("Failed to write fetch_log")
 
 
-def compute_and_update_scores(supabase: Client) -> int:
-    """Score every ``problem_results`` row that doesn't have a score yet.
-
-    Queries rows where ``score = 0 AND solved = true``, calls the pure
-    :func:`compute_score` function, and writes the result back.
-    Unsolved rows always score 0, so we skip them entirely — no point
-    re-scoring rows whose score will never change.
-
-    Returns the number of rows that were updated.
-    """
-    try:
-        resp = (
-            supabase.table("problem_results")
-            .select("id,problem_rating,solve_order,wrong_submissions,solved")
-            .eq("score", 0)
-            .eq("solved", True)
-            .execute()
-        )
-        rows = resp.data or []
-    except Exception:
-        logger.exception("Failed to fetch unscored problem_results")
-        return 0
-
-    if not rows:
-        logger.info("Scoring: no new rows to score")
-        return 0
-
-    updated = 0
-    skipped = 0
-    total_new_score = 0.0
-    for row in rows:
-        new_score = compute_score(
-            problem_rating=row.get("problem_rating"),
-            solve_order=row.get("solve_order"),
-            wrong_submissions=row.get("wrong_submissions", 0),
-            solved=row.get("solved", False),
-        )
-        try:
-            (
-                supabase.table("problem_results")
-                .update({"score": new_score})
-                .eq("id", row["id"])
-                .execute()
-            )
-            updated += 1
-            total_new_score += new_score
-        except Exception:
-            logger.exception(
-                "Failed to update score for problem_results row %s",
-                row["id"],
-            )
-            skipped += 1
-
-    logger.info(
-        "Scoring: %d row(s) updated, %d failed, total new score = %.1f",
-        updated,
-        skipped,
-        total_new_score,
-    )
-    return updated
-
-
-def write_leaderboard_snapshot(supabase: Client) -> int:
-    """Snapshot the current standings into ``leaderboard_snapshots``.
-
-    Reads the ``leaderboard`` view (already ranked by ``total_score`` desc)
-    and inserts one row per user with its rank at this moment. This is the
-    data source for the frontend's rank-over-time graph (§6.2 of the
-    contest doc) — every fetcher run adds one more point in history.
-
-    Returns the number of snapshot rows inserted.
-    """
-    try:
-        resp = (
-            supabase.table("leaderboard")
-            .select("user_id,total_score")
-            .order("total_score", desc=True)
-            .execute()
-        )
-        rows = resp.data or []
-    except Exception:
-        logger.exception("Failed to read leaderboard view for snapshot")
-        return 0
-
-    if not rows:
-        return 0
-
-    snapshot_rows = [
-        {
-            "user_id": row["user_id"],
-            "rank": i + 1,
-            "total_score": row["total_score"],
-        }
-        for i, row in enumerate(rows)
-    ]
-
-    try:
-        supabase.table("leaderboard_snapshots").insert(snapshot_rows).execute()
-    except Exception:
-        logger.exception("Failed to write leaderboard_snapshots")
-        return 0
-
-    logger.info("Leaderboard snapshot written: %d row(s)", len(snapshot_rows))
-    return len(snapshot_rows)
-
-
 # ---------------------------------------------------------------------------
-# cache preloading
+# caches
 # ---------------------------------------------------------------------------
 
 
@@ -565,11 +468,7 @@ def preload_caches(
         logger.exception("Failed to preload users cache")
 
     try:
-        resp = (
-            supabase.table("contests")
-            .select("id,cf_contest_id")
-            .execute()
-        )
+        resp = supabase.table("contests").select("id,cf_contest_id").execute()
         for row in resp.data or []:
             contest_cache[row["cf_contest_id"]] = row["id"]
         logger.info("Preloaded %d contest(s) from DB", len(contest_cache))
@@ -579,87 +478,72 @@ def preload_caches(
     return user_cache, contest_cache
 
 
-# ---------------------------------------------------------------------------
-# orchestration
-# ---------------------------------------------------------------------------
+def preload_problem_catalog(
+    supabase: Client,
+) -> dict[tuple[str, str], dict]:
+    """Load the ``problems`` catalog: ``{(contest_uuid, index): {set, slot}}``.
 
-
-def collect_contest_ids(
-    handles: list[str],
-    session: requests.Session,
-) -> dict[int, str]:
-    """For every handle, fetch rating history and collect unique contests.
-
-    Returns ``{cf_contest_id: contest_name}``.
+    Used to look up each problem's §4.1 base-points tag when scoring.
     """
-    contests: dict[int, str] = {}
-
-    for handle in handles:
-        ratings = fetch_user_ratings(handle, session)
-        if ratings is None:
-            continue
-        if not ratings:
-            logger.info(
-                "Handle %s has no rated contests — skipping", handle
-            )
-            continue
-
-        for entry in ratings:
-            cid = entry["contestId"]
-            if cid not in contests:
-                contests[cid] = entry["contestName"]
-
-        logger.debug(
-            "Handle %s: %d contest(s) in history", handle, len(ratings)
+    catalog: dict[tuple[str, str], dict] = {}
+    try:
+        resp = (
+            supabase.table("problems")
+            .select("contest_id,problem_index,problem_set,slot")
+            .execute()
         )
-
-    if not contests:
+        for row in resp.data or []:
+            catalog[(row["contest_id"], row["problem_index"])] = {
+                "problem_set": row.get("problem_set"),
+                "slot": row.get("slot"),
+            }
+        logger.info("Preloaded %d problem catalog entr(ies)", len(catalog))
+    except Exception:
+        # The problems table may not exist yet (007 not run) — scoring falls
+        # back to DEFAULT_BASE, so this is non-fatal.
         logger.warning(
-            "No contests discovered — all handles may be invalid "
-            "or have no rating history."
+            "Could not preload problem catalog (has 007_problems.sql run?) — "
+            "scoring will use default base points"
         )
-    return contests
+    return catalog
 
 
-def process_contest_standings(
+# ---------------------------------------------------------------------------
+# metadata sync (standings → contest row + roster)
+# ---------------------------------------------------------------------------
+
+
+def sync_contest_metadata(
     supabase: Client,
     contest_id: int,
     fallback_name: str,
-    tracked_handles: Optional[set[str]],
+    register_all_participants: bool,
     session: requests.Session,
     user_cache: dict[str, str],
     contest_cache: dict[int, str],
     authenticated: bool = False,
     api_key: Optional[str] = None,
     api_secret: Optional[str] = None,
-) -> int:
-    """Fetch standings for one contest and upsert data.
+) -> Optional[str]:
+    """Upsert the contest row (and, optionally, its full roster) from standings.
 
-    When *tracked_handles* is a set, only rows belonging to those handles
-    are upserted.  When it is ``None``, every participant in the standings
-    is treated as a tracked user.
-
-    Returns the number of problem_result rows upserted.
+    Standings are used **only** for metadata + roster here (§5.2) — no
+    solved/wrong data is derived from them.  Returns the contest UUID or ``None``.
     """
     cf_data = fetch_contest_standings(
         contest_id, session, authenticated, api_key, api_secret
     )
     if cf_data is None:
-        return 0
+        return None
 
     contest_info = cf_data.get("contest")
-    problems = cf_data.get("problems", [])
-    all_rows = cf_data.get("rows", [])
-
     if not contest_info:
         logger.warning(
-            "Contest %d: standings response missing 'contest' key",
-            contest_id,
+            "Contest %d: standings response missing 'contest' key", contest_id
         )
-        return 0
+        return None
 
-    # ── upsert the contest ──────────────────────────────────────────
-    contest_name = contest_info.get("name", fallback_name)
+    contest_name = contest_info.get("name", fallback_name) or fallback_name
     contest_uuid = upsert_contest(
         supabase,
         cf_contest_id=contest_id,
@@ -667,138 +551,231 @@ def process_contest_standings(
         start_time_seconds=contest_info.get("startTimeSeconds", 0),
         duration_seconds=contest_info.get("durationSeconds", 0),
     )
-    if contest_uuid:
-        contest_cache[contest_id] = contest_uuid
+    if not contest_uuid:
+        logger.warning("Contest %d: contest upsert failed", contest_id)
+        return None
+    contest_cache[contest_id] = contest_uuid
+
+    if register_all_participants:
+        rows = cf_data.get("rows", [])
+        registered = 0
+        for row in rows:
+            members = row.get("party", {}).get("members", [])
+            if not members:
+                continue
+            handle = members[0].get("handle", "").lower()
+            if not handle or handle in user_cache:
+                continue
+            uid = upsert_user(supabase, handle, members[0].get("handle"))
+            if uid:
+                user_cache[handle] = uid
+                registered += 1
+        logger.info(
+            "Contest %d (%s): metadata synced, %d participant(s), %d new user(s)",
+            contest_id,
+            contest_name,
+            len(rows),
+            registered,
+        )
     else:
-        logger.warning(
-            "Contest %d: contest upsert failed, skipping", contest_id
+        logger.info("Contest %d (%s): metadata synced", contest_id, contest_name)
+
+    return contest_uuid
+
+
+# ---------------------------------------------------------------------------
+# submission ingestion (contest.status → submissions table)
+# ---------------------------------------------------------------------------
+
+
+def latest_stored_submission_id(supabase: Client, contest_uuid: str) -> int:
+    """Return the highest CF submission id already stored for a contest (0 if none)."""
+    try:
+        resp = (
+            supabase.table("submissions")
+            .select("id")
+            .eq("contest_id", contest_uuid)
+            .order("id", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        return int(rows[0]["id"]) if rows else 0
+    except Exception:
+        logger.exception(
+            "Could not read latest stored submission id for contest %s",
+            contest_uuid,
         )
         return 0
 
-    # ── process standings rows (filter to tracked handles) ──────────
-    pr_rows: list[dict] = []
-    matched_handles: set[str] = set()
 
-    for row in all_rows:
-        party = row.get("party", {})
-        members = party.get("members", [])
-        if not members:
-            continue
+def ingest_contest_submissions(
+    supabase: Client,
+    cf_contest_id: int,
+    contest_uuid: str,
+    tracked_handles: Optional[set[str]],
+    session: requests.Session,
+    user_cache: dict[str, str],
+    authenticated: bool,
+    api_key: Optional[str],
+    api_secret: Optional[str],
+) -> tuple[int, set[str]]:
+    """Ingest new judged submissions (any verdict) from ``contest.status``.
 
-        handle = members[0].get("handle", "").lower()
-        if not handle:
-            continue
-        if tracked_handles is not None and handle not in tracked_handles:
-            continue
+    Pages newest-first and stops once it reaches submissions already stored
+    (id <= high-watermark), so steady-state runs are cheap.  ``tracked_handles``
+    of ``None`` means "store every participant" (contests.txt mode).
 
-        matched_handles.add(handle)
+    Returns ``(submissions_ingested, affected_problem_indexes)``.
+    """
+    watermark = latest_stored_submission_id(supabase, contest_uuid)
+    ingested = 0
+    affected: set[str] = set()
+    from_idx = 1
+    pages = 0
+    reached_known = False
 
-        # Ensure the user row exists.
-        user_uuid = user_cache.get(handle)
-        if user_uuid is None:
-            # Preserve original casing for display_name.
-            display_name = members[0].get("handle")
-            user_uuid = upsert_user(supabase, handle, display_name)
-            if user_uuid:
-                user_cache[handle] = user_uuid
-            else:
-                logger.warning(
-                    "Contest %d: could not upsert user %s, skipping",
-                    contest_id,
-                    handle,
-                )
+    while pages < MAX_STATUS_PAGES and not reached_known:
+        url = build_status_url(
+            cf_contest_id,
+            from_idx,
+            STATUS_PAGE_SIZE,
+            authenticated,
+            api_key,
+            api_secret,
+        )
+        if url is None:
+            logger.warning(
+                "Skipping contest.status for mashup contest %d: "
+                "CF_API_KEY / CF_API_SECRET not configured",
+                cf_contest_id,
+            )
+            break
+
+        result = cf_api_request(url, session)
+        if result is None or not result:
+            break
+
+        batch_rows: list[dict] = []
+        for sub in result:
+            sub_id = sub.get("id")
+            if sub_id is None:
+                continue
+            if sub_id <= watermark:
+                reached_known = True
                 continue
 
-        problem_results = row.get("problemResults", [])
-
-        for i, pr in enumerate(problem_results):
-            if i >= len(problems):
-                logger.warning(
-                    "Contest %d, user %s: problemResults[%d] has no "
-                    "matching problem in the problems array",
-                    contest_id,
-                    handle,
-                    i,
-                )
+            verdict = sub.get("verdict")
+            # Skip not-yet-judged submissions; they'll appear finalized later.
+            if verdict in (None, "TESTING", "SUBMITTED"):
                 continue
 
-            problem = problems[i]
-            points = float(pr.get("points", 0))
-            solved = points > 0
+            author = sub.get("author", {})
+            members = author.get("members", [])
+            if not members:
+                continue
+            handle = members[0].get("handle", "").lower()
+            if not handle:
+                continue
+            if tracked_handles is not None and handle not in tracked_handles:
+                continue
 
-            pr_rows.append(
+            user_uuid = user_cache.get(handle)
+            if user_uuid is None:
+                user_uuid = upsert_user(supabase, handle, members[0].get("handle"))
+                if user_uuid:
+                    user_cache[handle] = user_uuid
+                else:
+                    continue
+
+            problem_index = sub.get("problem", {}).get("index", "")
+            if not problem_index:
+                continue
+
+            batch_rows.append(
                 {
+                    "id": sub_id,
                     "user_id": user_uuid,
                     "contest_id": contest_uuid,
-                    "problem_index": problem.get("index"),
-                    "problem_rating": problem.get("rating"),
-                    "verdict": "OK" if solved else None,
-                    "wrong_submissions": pr.get("rejectedAttemptCount", 0),
-                    "solved": solved,
+                    "problem_index": problem_index,
+                    "verdict": verdict,
+                    "creation_time_seconds": sub.get("creationTimeSeconds", 0),
                 }
             )
+            affected.add(problem_index)
 
-    # ── batch upsert ────────────────────────────────────────────────
-    count = upsert_problem_results_batch(supabase, pr_rows)
-    if tracked_handles is not None:
-        logger.info(
-            "Contest %d (%s): %d total rows, %d tracked user(s) matched, "
-            "%d problem_results upserted",
-            contest_id,
-            contest_name,
-            len(all_rows),
-            len(matched_handles),
-            count,
+        if batch_rows:
+            ingested += upsert_submissions_batch(supabase, batch_rows)
+
+        pages += 1
+        from_idx += STATUS_PAGE_SIZE
+
+    if pages >= MAX_STATUS_PAGES and not reached_known:
+        logger.warning(
+            "Contest %d: hit MAX_STATUS_PAGES (%d) before catching up — "
+            "older submissions may be unread this run",
+            cf_contest_id,
+            MAX_STATUS_PAGES,
         )
-    else:
+    if ingested:
         logger.info(
-            "Contest %d (%s): %d participants, %d problem_results upserted",
-            contest_id,
-            contest_name,
-            len(all_rows),
-            count,
+            "Contest %d: ingested %d new submission(s) across %d problem(s)",
+            cf_contest_id,
+            ingested,
+            len(affected),
         )
-    return count
+    return ingested, affected
 
 
-def recompute_solve_ranks(
-    supabase: Client, affected_pairs: set[tuple[str, str]]
+# ---------------------------------------------------------------------------
+# recompute problem_results from stored submissions (deterministic projection)
+# ---------------------------------------------------------------------------
+
+
+def _wrong_before_ac(subs_sorted: list[dict], first_ac: Optional[int]) -> int:
+    """Count non-CE wrong submissions before the first AC (or all, if unsolved)."""
+    n = 0
+    for s in subs_sorted:
+        if s["verdict"] not in WRONG_VERDICTS:
+            continue
+        if first_ac is not None and s["creation_time_seconds"] >= first_ac:
+            continue
+        n += 1
+    return n
+
+
+def recompute_contest_results(
+    supabase: Client,
+    contest_uuid: str,
+    problem_indexes: set[str],
+    catalog: dict[tuple[str, str], dict],
 ) -> int:
-    """Assign ``solve_rank`` and ``solve_order`` for every affected pair.
+    """Recompute ``problem_results`` for the given problems from stored subs.
 
-    For each ``(contest_uuid, problem_index)`` pair, queries all accepted
-    submissions ordered by ``creation_time_seconds`` ASC, assigns rank
-    1/2/3..., and updates the matching ``problem_results`` row with
-    ``solve_rank`` and ``solve_order``.
+    This is the single source of scoring truth (§4).  It reads every stored
+    submission for each ``(contest, problem)``, derives solved / wrong-before-AC
+    / first-AC time per user, ranks solvers by first-AC time to assign
+    ``solve_order`` (§4.3), and writes the §4 score.  Idempotent and
+    re-runnable — the CSV fallback (recompute.py, §5.3) calls this too.
 
-    Score is also computed here as a preliminary value so the row is never
-    left with ``score = 0``, but it will be recalculated by
-    :func:`finalize_scores` once ``wrong_submissions`` is refreshed from
-    the standings API.
-
-    Returns the number of ``problem_results`` rows updated.
+    Returns the number of ``problem_results`` rows upserted.
     """
-    if not affected_pairs:
-        return 0
-
     updated = 0
 
-    for contest_uuid, problem_index in affected_pairs:
-        # ── fetch accepted submissions for this problem (ranked by time) ─
+    for problem_index in sorted(problem_indexes):
         try:
-            subs_resp = (
+            resp = (
                 supabase.table("submissions")
-                .select("user_id,contest_id,problem_index,creation_time_seconds")
+                .select("user_id,verdict,creation_time_seconds")
                 .eq("contest_id", contest_uuid)
                 .eq("problem_index", problem_index)
-                .eq("verdict", "OK")
-                .order("creation_time_seconds", desc=False)  # ascending
+                .order("creation_time_seconds", desc=False)
                 .execute()
             )
-            subs = subs_resp.data or []
+            subs = resp.data or []
         except Exception:
             logger.exception(
-                "Failed to fetch submissions for solve_rank: contest=%s problem=%s",
+                "recompute: failed to read submissions for %s/%s",
                 contest_uuid,
                 problem_index,
             )
@@ -807,441 +784,259 @@ def recompute_solve_ranks(
         if not subs:
             continue
 
-        # ── fetch matching problem_results (need rating + wrong_submissions) ─
-        try:
-            pr_resp = (
-                supabase.table("problem_results")
-                .select("user_id,problem_rating,wrong_submissions")
-                .eq("contest_id", contest_uuid)
-                .eq("problem_index", problem_index)
-                .eq("solved", True)
-                .execute()
+        # Group submissions by user, preserving ascending time order.
+        by_user: dict[str, list[dict]] = {}
+        for s in subs:
+            uid = s.get("user_id")
+            if uid:
+                by_user.setdefault(uid, []).append(s)
+
+        # Per-user solve state.
+        per_user: dict[str, dict] = {}
+        for uid, user_subs in by_user.items():
+            first_ac = next(
+                (
+                    s["creation_time_seconds"]
+                    for s in user_subs
+                    if s["verdict"] == "OK"
+                ),
+                None,
             )
-            pr_rows = pr_resp.data or []
-        except Exception:
-            logger.exception(
-                "Failed to fetch problem_results for solve_rank: contest=%s problem=%s",
-                contest_uuid,
-                problem_index,
-            )
-            continue
+            per_user[uid] = {
+                "solved": first_ac is not None,
+                "first_ac": first_ac,
+                "wrong": _wrong_before_ac(user_subs, first_ac),
+            }
 
-        # Build a lookup keyed by user_id.
-        pr_by_user: dict[str, dict] = {}
-        for pr in pr_rows:
-            pr_by_user[pr["user_id"]] = pr
+        # Rank solvers by first-AC time → solve_order (§4.3).
+        solvers = sorted(
+            (uid for uid, d in per_user.items() if d["solved"]),
+            key=lambda u: per_user[u]["first_ac"],
+        )
+        order_by_user = {uid: i + 1 for i, uid in enumerate(solvers)}
 
-        # ── assign ranks and compute scores ────────────────────────────
-        update_rows: list[dict] = []
-        for i, sub in enumerate(subs):
-            uid = sub.get("user_id")
-            if not uid:
-                continue
-            pr = pr_by_user.get(uid)
-            if pr is None:
-                # User has a submission but no problem_results row
-                # (shouldn't happen in normal operation — skip).
-                continue
+        tag = catalog.get((contest_uuid, problem_index), {})
+        set_name = tag.get("problem_set")
+        slot = tag.get("slot")
 
-            rank = i + 1
+        rows: list[dict] = []
+        for uid, d in per_user.items():
+            solve_order = order_by_user.get(uid)  # None if unsolved
             score = compute_score(
-                problem_rating=pr.get("problem_rating"),
-                solve_order=rank,
-                wrong_submissions=pr.get("wrong_submissions", 0),
-                solved=True,
+                set_name=set_name,
+                slot=slot,
+                solve_order=solve_order,
+                wrong_submissions=d["wrong"],
+                solved=d["solved"],
             )
-            update_rows.append(
+            rows.append(
                 {
                     "user_id": uid,
                     "contest_id": contest_uuid,
                     "problem_index": problem_index,
-                    "solve_rank": rank,
-                    "solve_order": rank,
+                    "verdict": "OK" if d["solved"] else None,
+                    "wrong_submissions": d["wrong"],
+                    "solved": d["solved"],
+                    "solve_order": solve_order,
+                    "solve_rank": solve_order,
                     "score": score,
                 }
             )
 
-        if update_rows:
-            n = upsert_problem_results_batch(supabase, update_rows)
-            updated += n
+        updated += upsert_problem_results_batch(supabase, rows)
 
     if updated:
         logger.info(
-            "solve_ranks: %d row(s) updated across %d problem(s)",
+            "recompute: %d problem_results row(s) updated across %d problem(s)",
             updated,
-            len(affected_pairs),
+            len(problem_indexes),
         )
     return updated
 
 
-def finalize_scores(
+def recompute_all(
+    supabase: Client, catalog: Optional[dict[tuple[str, str], dict]] = None
+) -> int:
+    """Recompute every contest's ``problem_results`` from stored submissions.
+
+    Used by the CSV fallback / full-recompute path (recompute.py, §5.3, §13).
+    """
+    if catalog is None:
+        catalog = preload_problem_catalog(supabase)
+
+    # Enumerate all (contest_uuid, problem_index) pairs that have submissions.
+    try:
+        resp = (
+            supabase.table("submissions")
+            .select("contest_id,problem_index")
+            .execute()
+        )
+        rows = resp.data or []
+    except Exception:
+        logger.exception("recompute_all: failed to enumerate submissions")
+        return 0
+
+    by_contest: dict[str, set[str]] = {}
+    for r in rows:
+        by_contest.setdefault(r["contest_id"], set()).add(r["problem_index"])
+
+    total = 0
+    for contest_uuid, problem_indexes in by_contest.items():
+        total += recompute_contest_results(
+            supabase, contest_uuid, problem_indexes, catalog
+        )
+    logger.info("recompute_all: %d problem_results row(s) updated", total)
+    return total
+
+
+# ---------------------------------------------------------------------------
+# leaderboard snapshot (rank-over-time + freeze source)
+# ---------------------------------------------------------------------------
+
+
+def write_leaderboard_snapshot(supabase: Client) -> int:
+    """Snapshot the current standings into ``leaderboard_snapshots``.
+
+    Reads the ``leaderboard`` view in its §4.4 tiebroken order and stores rank,
+    score, and solved count per user.  This feeds both the rank-over-time graph
+    (§6.2) and the leaderboard freeze (§4.5) — the frozen board is drawn from the
+    snapshot taken at T+23h.
+    """
+    try:
+        resp = (
+            supabase.table("leaderboard")
+            .select("user_id,total_score,problems_solved,total_wrong,last_ac_seconds")
+            .order("total_score", desc=True)
+            .order("total_wrong", desc=False)
+            .order("last_ac_seconds", desc=False)
+            .execute()
+        )
+        rows = resp.data or []
+    except Exception:
+        logger.exception("Failed to read leaderboard view for snapshot")
+        return 0
+
+    if not rows:
+        return 0
+
+    snapshot_rows = [
+        {
+            "user_id": row["user_id"],
+            "rank": i + 1,
+            "total_score": row["total_score"],
+            "problems_solved": row.get("problems_solved", 0),
+        }
+        for i, row in enumerate(rows)
+    ]
+
+    try:
+        supabase.table("leaderboard_snapshots").insert(snapshot_rows).execute()
+    except Exception:
+        logger.exception("Failed to write leaderboard_snapshots")
+        return 0
+
+    logger.info("Leaderboard snapshot written: %d row(s)", len(snapshot_rows))
+    return len(snapshot_rows)
+
+
+# ---------------------------------------------------------------------------
+# orchestration
+# ---------------------------------------------------------------------------
+
+
+def collect_contest_ids(
+    handles: list[str], session: requests.Session
+) -> dict[int, str]:
+    """For every handle, fetch rating history and collect unique contests."""
+    contests: dict[int, str] = {}
+    for handle in handles:
+        ratings = fetch_user_ratings(handle, session)
+        if not ratings:
+            if ratings is not None:
+                logger.info("Handle %s has no rated contests — skipping", handle)
+            continue
+        for entry in ratings:
+            cid = entry["contestId"]
+            contests.setdefault(cid, entry["contestName"])
+    if not contests:
+        logger.warning(
+            "No contests discovered — handles may be invalid or unrated."
+        )
+    return contests
+
+
+def process_contest(
     supabase: Client,
-    affected_pairs: set[tuple[str, str]],
-    tracked_handles: set[str],
+    cf_contest_id: int,
+    fallback_name: str,
+    tracked_handles: Optional[set[str]],
     session: requests.Session,
     user_cache: dict[str, str],
     contest_cache: dict[int, str],
-    mashup_contest_ids: set[int],
+    catalog: dict[tuple[str, str], dict],
+    authenticated: bool,
     api_key: Optional[str],
     api_secret: Optional[str],
 ) -> tuple[int, int]:
-    """Refresh ``wrong_submissions`` from standings, then recompute scores.
+    """Full pipeline for one contest: metadata → ingest status → recompute.
 
-    For each contest that has affected ``(contest_uuid, problem_index)``
-    pairs, re-fetches ``contest.standings`` to get the current
-    ``rejectedAttemptCount`` for every tracked user, updates
-    ``problem_results.wrong_submissions`` where it changed, and then
-    recomputes ``score`` for every solved row in the affected pair using
-    the now-current ``wrong_submissions`` and ``solve_rank``.
-
-    Returns ``(wrong_submissions_updated, scores_updated)``.
+    ``tracked_handles=None`` means "every participant" (contests.txt).
+    Returns ``(submissions_ingested, problem_results_updated)``.
     """
-    if not affected_pairs:
+    contest_uuid = sync_contest_metadata(
+        supabase,
+        cf_contest_id,
+        fallback_name,
+        register_all_participants=tracked_handles is None,
+        session=session,
+        user_cache=user_cache,
+        contest_cache=contest_cache,
+        authenticated=authenticated,
+        api_key=api_key,
+        api_secret=api_secret,
+    )
+    if not contest_uuid:
         return 0, 0
 
-    # Reverse mapping: contest_uuid → cf_contest_id.
-    uuid_to_cf_id: dict[str, int] = {}
-    for cf_id, uuid_str in contest_cache.items():
-        uuid_to_cf_id[uuid_str] = cf_id
-
-    # Group affected pairs by cf_contest_id.
-    by_contest: dict[int, list[tuple[str, str]]] = {}
-    for contest_uuid, problem_index in affected_pairs:
-        cf_id = uuid_to_cf_id.get(contest_uuid)
-        if cf_id is None:
-            logger.debug(
-                "finalize_scores: contest_uuid %s not in cache — skipping",
-                contest_uuid,
-            )
-            continue
-        by_contest.setdefault(cf_id, []).append((contest_uuid, problem_index))
-
-    wrong_updated = 0
-    scores_updated = 0
-
-    for cf_contest_id, pairs in by_contest.items():
-        # ── re-fetch standings ───────────────────────────────────────
-        authenticated = cf_contest_id in mashup_contest_ids
-        cf_data = fetch_contest_standings(
-            cf_contest_id, session, authenticated, api_key, api_secret
-        )
-        if cf_data is None:
-            logger.warning(
-                "finalize_scores: could not fetch standings for contest %d",
-                cf_contest_id,
-            )
-            continue
-
-        problems = cf_data.get("problems", [])
-        all_rows = cf_data.get("rows", [])
-
-        # Build problem_index → position in the problems array.
-        problem_pos: dict[str, int] = {}
-        for i, p in enumerate(problems):
-            problem_pos[p.get("index", "")] = i
-
-        # Build (handle, problem_index) → rejectedAttemptCount.
-        standings_wa: dict[tuple[str, str], int] = {}
-        for row in all_rows:
-            members = row.get("party", {}).get("members", [])
-            if not members:
-                continue
-            handle = members[0].get("handle", "").lower()
-
-            problem_results = row.get("problemResults", [])
-            for prob_idx, pos in problem_pos.items():
-                if pos >= len(problem_results):
-                    continue
-                standings_wa[(handle, prob_idx)] = (
-                    problem_results[pos].get("rejectedAttemptCount", 0)
-                )
-
-        # ── process each affected pair for this contest ─────────────
-        for contest_uuid, problem_index in pairs:
-            # Fetch all solved problem_results for this pair.
-            try:
-                pr_resp = (
-                    supabase.table("problem_results")
-                    .select(
-                        "id,user_id,problem_rating,solve_rank,"
-                        "wrong_submissions,solved"
-                    )
-                    .eq("contest_id", contest_uuid)
-                    .eq("problem_index", problem_index)
-                    .eq("solved", True)
-                    .execute()
-                )
-                pr_rows = pr_resp.data or []
-            except Exception:
-                logger.exception(
-                    "finalize_scores: failed to fetch problem_results "
-                    "for contest=%s problem=%s",
-                    contest_uuid,
-                    problem_index,
-                )
-                continue
-
-            update_rows: list[dict] = []
-            for pr in pr_rows:
-                # Look up the user's handle.
-                uid = pr.get("user_id")
-                if not uid:
-                    continue
-                # Reverse-lookup handle from user_cache.
-                handle = None
-                for h, u in user_cache.items():
-                    if u == uid:
-                        handle = h
-                        break
-                if handle is None:
-                    continue
-
-                # Get current wrong_submissions from standings.
-                current_wa = standings_wa.get((handle, problem_index), 0)
-                stored_wa = pr.get("wrong_submissions", 0)
-
-                if current_wa != stored_wa:
-                    wrong_updated += 1
-
-                solve_rank = pr.get("solve_rank")
-                new_score = compute_score(
-                    problem_rating=pr.get("problem_rating"),
-                    solve_order=solve_rank,
-                    wrong_submissions=current_wa,
-                    solved=True,
-                )
-
-                update_rows.append(
-                    {
-                        "user_id": uid,
-                        "contest_id": contest_uuid,
-                        "problem_index": problem_index,
-                        "wrong_submissions": current_wa,
-                        "score": new_score,
-                    }
-                )
-
-            if update_rows:
-                n = upsert_problem_results_batch(supabase, update_rows)
-                scores_updated += n
-
-    if wrong_updated or scores_updated:
-        logger.info(
-            "finalize_scores: wrong_submissions_updated=%d, "
-            "scores_updated=%d across %d contest(s)",
-            wrong_updated,
-            scores_updated,
-            len(by_contest),
-        )
-    return wrong_updated, scores_updated
-
-
-def fetch_and_ingest_submissions(
-    supabase: Client,
-    contest_ids: set[int],
-    tracked_handles: set[str],
-    session: requests.Session,
-    user_cache: dict[str, str],
-    contest_cache: dict[int, str],
-    mashup_contest_ids: set[int],
-    api_key: Optional[str],
-    api_secret: Optional[str],
-) -> tuple[int, int, set[tuple[str, str]]]:
-    """Pull recent OK submissions from ``contest.status`` and assign ranks.
-
-    For each contest in *contest_ids*, pages through ``contest.status``
-    (newest-first, 100 per page) until the oldest ``creationTimeSeconds``
-    in a batch is older than a 20-minute cutoff.  Only accepted submissions
-    from *tracked_handles* are upserted (deduped on CF submission id).
-
-    After ingestion, :func:`recompute_solve_ranks` is called for every
-    ``(contest_id, problem_index)`` that received new rows.
-
-    Returns ``(submissions_ingested, solve_ranks_computed, affected_pairs)``.
-    """
-    cutoff = int(time.time()) - 1200  # 20-minute sliding window
-
-    subs_ingested = 0
-    affected_pairs: set[tuple[str, str]] = set()
-
-    count = 100  # batch size for CF API pagination
-
-    logger.info(
-        "Submissions: checking %d contest(s) for recent OK submissions",
-        len(contest_ids),
+    ingested, affected = ingest_contest_submissions(
+        supabase,
+        cf_contest_id,
+        contest_uuid,
+        tracked_handles,
+        session,
+        user_cache,
+        authenticated,
+        api_key,
+        api_secret,
     )
 
-    for cid in sorted(contest_ids):
-        contest_uuid = contest_cache.get(cid)
-        if contest_uuid is None:
-            logger.debug(
-                "Submissions: skipping contest %d — not in cache", cid
-            )
-            continue
-
-        from_idx = 1
-        pages = 0
-
-        while True:
-            if cid in mashup_contest_ids:
-                if not api_key or not api_secret:
-                    logger.warning(
-                        "Skipping contest.status for mashup contest %d: "
-                        "CF_API_KEY / CF_API_SECRET not configured",
-                        cid,
-                    )
-                    break
-                url = build_signed_url(
-                    "contest.status",
-                    {"contestId": cid, "from": from_idx, "count": count},
-                    api_key,
-                    api_secret,
-                )
-            else:
-                url = (
-                    f"{CF_BASE_URL}/contest.status"
-                    f"?contestId={cid}"
-                    f"&from={from_idx}"
-                    f"&count={count}"
-                )
-            result = cf_api_request(url, session)
-            if result is None:
-                break
-
-            if not result:  # empty page → done
-                break
-
-            batch_rows: list[dict] = []
-            oldest_in_page = float("inf")
-
-            for sub in result:
-                ct = sub.get("creationTimeSeconds", 0)
-                oldest_in_page = min(oldest_in_page, ct)
-
-                # Filter: OK verdict + tracked user.
-                if sub.get("verdict") != "OK":
-                    continue
-
-                author = sub.get("author", {})
-                members = author.get("members", [])
-                if not members:
-                    continue
-                handle = members[0].get("handle", "").lower()
-                if not handle or handle not in tracked_handles:
-                    continue
-
-                # Ensure user exists.
-                user_uuid = user_cache.get(handle)
-                if user_uuid is None:
-                    display_name = members[0].get("handle")
-                    user_uuid = upsert_user(supabase, handle, display_name)
-                    if user_uuid:
-                        user_cache[handle] = user_uuid
-                    else:
-                        continue
-
-                problem = sub.get("problem", {})
-                problem_index = problem.get("index", "")
-                ct = sub.get("creationTimeSeconds", 0)
-
-                batch_rows.append(
-                    {
-                        "id": sub["id"],
-                        "user_id": user_uuid,
-                        "contest_id": contest_uuid,
-                        "problem_index": problem_index,
-                        "verdict": "OK",
-                        "creation_time_seconds": ct,
-                    }
-                )
-
-            if batch_rows:
-                n = upsert_submissions_batch(supabase, batch_rows)
-                subs_ingested += n
-                for r in batch_rows:
-                    affected_pairs.add(
-                        (contest_uuid, r["problem_index"])
-                    )
-
-            pages += 1
-            from_idx += count
-
-            # Stop condition: oldest submission in this batch is past the
-            # cutoff.  Results are newest-first, so there's nothing newer
-            # on subsequent pages.
-            if oldest_in_page < cutoff:
-                logger.debug(
-                    "Submissions contest %d: oldest ts=%d < cutoff=%d — "
-                    "stopping after %d page(s)",
-                    cid,
-                    int(oldest_in_page),
-                    cutoff,
-                    pages,
-                )
-                break
-
-        if pages:
-            logger.info(
-                "Submissions contest %d: %d page(s) scanned, "
-                "%d new row(s) ingested",
-                cid,
-                pages,
-                subs_ingested,
-            )
-
-    # ── recompute ranks for every affected (contest, problem) pair ────
-    ranks = recompute_solve_ranks(supabase, affected_pairs)
-
-    logger.info(
-        "Submissions step: ingested=%d, solve_ranks_computed=%d",
-        subs_ingested,
-        ranks,
-    )
-    return subs_ingested, ranks, affected_pairs
-
-
-# ---------------------------------------------------------------------------
-# entry point
-# ---------------------------------------------------------------------------
+    updated = 0
+    if affected:
+        updated = recompute_contest_results(
+            supabase, contest_uuid, affected, catalog
+        )
+    return ingested, updated
 
 
 def main() -> None:
-    """Run the full fetch-and-upsert pipeline.
-
-    Two independent paths feed the same tables:
-
-    1. **handles.txt** — discover contests from tracked users' rating
-       history, then fetch standings filtered to those handles.
-    2. **contests.txt** — fetch full standings for fixed contest IDs,
-       treating every participant as a tracked user.
-
-    Each path writes its own ``fetch_log`` row (keyed by ``source``) so
-    you can tell which one contributed what.
-    """
+    """Run the full fetch-ingest-score pipeline for all tracked contests."""
     logger.info("=" * 60)
     logger.info("cf-leaderboard fetcher starting")
 
     config = load_config()
-    supabase = init_supabase(
-        config["SUPABASE_URL"], config["SUPABASE_SERVICE_KEY"]
-    )
+    supabase = init_supabase(config["SUPABASE_URL"], config["SUPABASE_SERVICE_KEY"])
 
     session = requests.Session()
     session.headers["User-Agent"] = "cf-leaderboard-fetcher/1.0"
 
     user_cache, contest_cache = preload_caches(supabase)
+    catalog = preload_problem_catalog(supabase)
 
-    # ── load inputs ──────────────────────────────────────────────────
-    handles = load_handles(
-        Path(__file__).resolve().parent / "handles.txt"
-    )
-    logger.info(
-        "Loaded %d handle(s): %s", len(handles), ", ".join(handles)
-    )
+    handles = load_handles(Path(__file__).resolve().parent / "handles.txt")
+    logger.info("Loaded %d handle(s): %s", len(handles), ", ".join(handles))
+    tracked_handles: set[str] = set(handles)
 
-    contest_ids = load_contest_ids(
-        Path(__file__).resolve().parent / "contests.txt"
-    )
+    contest_ids = load_contest_ids(Path(__file__).resolve().parent / "contests.txt")
     if contest_ids:
         logger.info(
             "Loaded %d contest ID(s): %s",
@@ -1249,244 +1044,108 @@ def main() -> None:
             ", ".join(str(c) for c in contest_ids),
         )
 
-    # CF credentials + the set of mashup contests (from contests.txt) that
-    # require signed requests.  Public contests from handles.txt don't.
     cf_api_key = config.get("CF_API_KEY") or None
     cf_api_secret = config.get("CF_API_SECRET") or None
     mashup_contest_ids: set[int] = set(contest_ids)
     if mashup_contest_ids and not (cf_api_key and cf_api_secret):
         logger.warning(
-            "Mashup contests configured but CF_API_KEY / CF_API_SECRET "
-            "are missing — signed requests for %s will fail",
+            "Mashup contests configured but CF_API_KEY / CF_API_SECRET missing "
+            "— signed requests for %s will fail",
             mashup_contest_ids,
         )
 
-    # ── handles.txt path ─────────────────────────────────────────────
-    h_contests = 0
-    h_pr_rows = 0
-    h_error: Optional[str] = None
-    h_discovered_contest_ids: set[int] = set()
-    tracked_handles: set[str] = set(handles)
+    total_ingested = 0
+    total_updated = 0
+    total_contests = 0
+    errors: list[str] = []
 
+    # ── contests.txt path: the orientation mashup(s), all participants ──
+    for cid in contest_ids:
+        try:
+            ing, upd = process_contest(
+                supabase,
+                cid,
+                fallback_name="",
+                tracked_handles=None,  # every participant
+                session=session,
+                user_cache=user_cache,
+                contest_cache=contest_cache,
+                catalog=catalog,
+                authenticated=True,
+                api_key=cf_api_key,
+                api_secret=cf_api_secret,
+            )
+            total_ingested += ing
+            total_updated += upd
+            total_contests += 1
+        except Exception as exc:
+            logger.exception("[contests.txt] contest %d failed", cid)
+            errors.append(f"{cid}: {exc.__class__.__name__}: {exc}")
+    if contest_ids:
+        write_fetch_log(
+            supabase,
+            "error" if errors else "success",
+            total_contests,
+            "\n".join(errors) if errors else None,
+            source="contests.txt",
+        )
+
+    # ── handles.txt path: track specific users across public contests ──
+    h_errors: list[str] = []
     if handles:
         try:
-            contests = collect_contest_ids(handles, session)
-            h_discovered_contest_ids = set(contests.keys())
-            # Drop contests we've already processed so we don't re-fetch
-            # standings for them on every run.
-            new_contests = {
-                cid: cname
-                for cid, cname in contests.items()
-                if cid not in contest_cache
-            }
-            skipped = len(contests) - len(new_contests)
-            if skipped:
-                logger.info(
-                    "[handles.txt] Skipping %d already-processed contest(s)",
-                    skipped,
-                )
-            logger.info(
-                "[handles.txt] %d new contest(s) to process (of %d total)",
-                len(new_contests),
-                len(contests),
-            )
-            for cid, cname in new_contests.items():
-                count = process_contest_standings(
-                    supabase,
-                    cid,
-                    cname,
-                    tracked_handles,
-                    session,
-                    user_cache,
-                    contest_cache,
-                )
-                h_pr_rows += count
-                h_contests += 1
+            discovered = collect_contest_ids(handles, session)
+            for cid, cname in discovered.items():
+                # Only ingest contests we don't already fully track via
+                # contests.txt (avoid double work).
+                if cid in mashup_contest_ids:
+                    continue
+                try:
+                    ing, upd = process_contest(
+                        supabase,
+                        cid,
+                        fallback_name=cname,
+                        tracked_handles=tracked_handles,  # filter to our users
+                        session=session,
+                        user_cache=user_cache,
+                        contest_cache=contest_cache,
+                        catalog=catalog,
+                        authenticated=False,  # public contests
+                        api_key=None,
+                        api_secret=None,
+                    )
+                    total_ingested += ing
+                    total_updated += upd
+                    total_contests += 1
+                except Exception as exc:
+                    logger.exception("[handles.txt] contest %d failed", cid)
+                    h_errors.append(f"{cid}: {exc.__class__.__name__}: {exc}")
         except Exception as exc:
-            logger.exception(
-                "[handles.txt] Unhandled exception during fetch"
-            )
-            h_error = (
-                f"{exc.__class__.__name__}: {exc}\n"
-                f"{traceback.format_exc()}"
-            )
+            logger.exception("[handles.txt] discovery failed")
+            h_errors.append(f"discovery: {exc.__class__.__name__}: {exc}")
+        write_fetch_log(
+            supabase,
+            "error" if h_errors else "success",
+            total_contests,
+            "\n".join(h_errors) if h_errors else None,
+            source="handles.txt",
+        )
 
-        h_status = "error" if h_error else "success"
-        try:
-            write_fetch_log(
-                supabase,
-                h_status,
-                h_contests,
-                h_error,
-                source="handles.txt",
-            )
-        except Exception:
-            logger.exception(
-                "Failed to write fetch_log for handles.txt"
-            )
-
-    # ── contests.txt path ────────────────────────────────────────────
-    c_contests = 0
-    c_pr_rows = 0
-    c_error: Optional[str] = None
-
-    if contest_ids:
-        try:
-            for cid in contest_ids:
-                count = process_contest_standings(
-                    supabase,
-                    cid,
-                    "",  # fallback_name — standings response provides the real name
-                    None,  # tracked_handles=None → ALL participants
-                    session,
-                    user_cache,
-                    contest_cache,
-                    authenticated=True,
-                    api_key=cf_api_key,
-                    api_secret=cf_api_secret,
-                )
-                c_pr_rows += count
-                c_contests += 1
-        except Exception as exc:
-            logger.exception(
-                "[contests.txt] Unhandled exception during fetch"
-            )
-            c_error = (
-                f"{exc.__class__.__name__}: {exc}\n"
-                f"{traceback.format_exc()}"
-            )
-
-        c_status = "error" if c_error else "success"
-        try:
-            write_fetch_log(
-                supabase,
-                c_status,
-                c_contests,
-                c_error,
-                source="contests.txt",
-            )
-        except Exception:
-            logger.exception(
-                "Failed to write fetch_log for contests.txt"
-            )
-
-    # ── scoring ──────────────────────────────────────────────────────
-    scored = 0
-    try:
-        scored = compute_and_update_scores(supabase)
-    except Exception:
-        logger.exception("Scoring step failed")
-
-    # ── submissions ─────────────────────────────────────────────────
-    # Collect every contest we know about: pre-existing (cache),
-    # discovered via handles.txt, and listed in contests.txt.
-    all_contest_ids = (
-        set(contest_cache.keys())
-        | h_discovered_contest_ids
-        | set(contest_ids)
-    )
-    subs_ingested = 0
-    ranks_computed = 0
-    affected_pairs: set[tuple[str, str]] = set()
-    if all_contest_ids and tracked_handles:
-        try:
-            subs_ingested, ranks_computed, affected_pairs = (
-                fetch_and_ingest_submissions(
-                    supabase,
-                    all_contest_ids,
-                    tracked_handles,
-                    session,
-                    user_cache,
-                    contest_cache,
-                    mashup_contest_ids,
-                    cf_api_key,
-                    cf_api_secret,
-                )
-            )
-            write_fetch_log(
-                supabase,
-                "success",
-                subs_ingested,
-                None,
-                source="submissions",
-            )
-        except Exception as exc:
-            logger.exception("Submissions step failed")
-            subs_error = (
-                f"{exc.__class__.__name__}: {exc}\n"
-                f"{traceback.format_exc()}"
-            )
-            try:
-                write_fetch_log(
-                    supabase,
-                    "error",
-                    0,
-                    subs_error,
-                    source="submissions",
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to write fetch_log for submissions"
-                )
-
-    # ── finalize scores ──────────────────────────────────────────────
-    # Re-fetch standings to get current wrong_submissions, then
-    # recompute scores for every affected row so solve_rank,
-    # wrong_submissions, and score are all consistent.
-    wrong_updated = 0
-    final_scores = 0
-    if affected_pairs:
-        try:
-            wrong_updated, final_scores = finalize_scores(
-                supabase,
-                affected_pairs,
-                tracked_handles,
-                session,
-                user_cache,
-                contest_cache,
-                mashup_contest_ids,
-                cf_api_key,
-                cf_api_secret,
-            )
-        except Exception:
-            logger.exception("finalize_scores step failed")
-
-    # ── leaderboard snapshot (rank-over-time source) ────────────────
+    # ── leaderboard snapshot (rank-over-time + freeze source) ──
     snapshot_rows = 0
     try:
         snapshot_rows = write_leaderboard_snapshot(supabase)
     except Exception:
         logger.exception("Leaderboard snapshot step failed")
 
-    # ── summary ──────────────────────────────────────────────────────
-    total_contests = h_contests + c_contests
-    total_pr_rows = h_pr_rows + c_pr_rows
-    overall = (
-        "error"
-        if (h_error or c_error)
-        else "success"
-    )
-
+    overall = "error" if (errors or h_errors) else "success"
     logger.info(
-        "Fetch complete: status=%s, contests_processed=%d "
-        "(handles.txt=%d, contests.txt=%d), "
-        "problem_results_upserted=%d (handles.txt=%d, contests.txt=%d), "
-        "rows_scored=%d, "
-        "subs_ingested=%d, solve_ranks_computed=%d, "
-        "wrong_submissions_refreshed=%d, final_scores_updated=%d, "
-        "snapshot_rows=%d",
+        "Fetch complete: status=%s, contests=%d, submissions_ingested=%d, "
+        "problem_results_updated=%d, snapshot_rows=%d",
         overall,
         total_contests,
-        h_contests,
-        c_contests,
-        total_pr_rows,
-        h_pr_rows,
-        c_pr_rows,
-        scored,
-        subs_ingested,
-        ranks_computed,
-        wrong_updated,
-        final_scores,
+        total_ingested,
+        total_updated,
         snapshot_rows,
     )
     logger.info("=" * 60)
