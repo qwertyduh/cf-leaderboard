@@ -548,6 +548,123 @@ body::before {
    ========================================================================== */
 main { padding-top: 4px; }
 .announcements-section { margin-bottom: 18px; }
+.board-section, .problems-section { margin-bottom: 18px; }
+
+/* ==========================================================================
+   per-problem board (ICPC-style solved/attempted/first-solver grid, §5.4)
+   ========================================================================== */
+.board-table { border-collapse: separate; border-spacing: 0; font-size: 0.82rem; }
+
+.board-table thead th {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-on-paper);
+  padding: 4px 6px 10px;
+  border-bottom: 1px solid var(--paper-line);
+  white-space: nowrap;
+  text-align: center;
+}
+
+.board-table thead th.setgroup {
+  border-bottom: 2px solid var(--ink-on-paper);
+  font-weight: 700;
+  color: var(--ink-on-paper);
+}
+
+.board-table th.sticky-col, .board-table td.sticky-col {
+  position: sticky;
+  left: 0;
+  background: var(--paper);
+  text-align: left;
+  z-index: 1;
+  box-shadow: 1px 0 0 var(--paper-line);
+  min-width: 130px;
+}
+
+.board-table td { padding: 4px 5px; text-align: center; }
+.board-table tbody tr:hover td { background: rgba(0,0,0,0.03); }
+.board-table tbody tr:hover td.sticky-col { background: var(--paper-2); }
+
+.board-rank { color: var(--muted-on-paper); font-family: var(--font-mono); margin-right: 6px; }
+
+.cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.cell.c-none      { color: var(--paper-line); }
+.cell.c-attempted { background: rgba(255,107,94,0.16); color: #a83a2c; border-color: rgba(255,107,94,0.4); }
+.cell.c-solved    { background: var(--accepted); color: #06301a; }
+.cell.c-first     { background: var(--accepted); color: #06301a; border-color: var(--pending); box-shadow: 0 0 0 1px var(--pending); }
+.cell.c-first::after { content: "★"; font-size: 0.6rem; margin-left: 1px; color: #402a02; }
+
+.board-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--muted-on-paper);
+}
+.board-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.board-legend .cell { width: 18px; height: 16px; }
+
+/* ==========================================================================
+   problem index + Learn More footers (§3.3, §5.4)
+   ========================================================================== */
+.problems-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.prob-card {
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--paper-2);
+}
+
+.prob-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+
+.set-badge {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.7rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: #fff;
+}
+.set-badge.set-A { background: var(--accepted-dim); }
+.set-badge.set-B { background: #7a5a1a; }
+.set-badge.set-C { background: var(--bronze); }
+
+.prob-slot { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted-on-paper); }
+.prob-title { font-weight: 600; font-size: 0.92rem; margin-bottom: 2px; }
+.prob-theme { font-size: 0.78rem; color: var(--muted-on-paper); margin-bottom: 8px; }
+
+.prob-links { display: flex; flex-wrap: wrap; gap: 6px 12px; font-family: var(--font-mono); font-size: 0.72rem; }
+.prob-links a { color: var(--accepted-dim); text-decoration: none; border-bottom: 1px dotted var(--accepted-dim); }
+.prob-links a.learn::before { content: "↗ "; }
+
+.board-frozen-note {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--muted-on-paper);
+  padding: 28px 8px;
+  text-align: center;
+}
 
 /* ==========================================================================
    reduced motion
@@ -624,6 +741,41 @@ main { padding-top: 4px; }
       </div>
     </section>
 
+    <section class="board-section panel paper">
+      <div class="panel-head">
+        <div>
+          <h2>Problem board</h2>
+          <p class="panel-sub">green = solved · ★ = first solver · red = attempted, not yet solved</p>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="board-table">
+          <thead id="boardHead"></thead>
+          <tbody id="boardBody">
+            <tr><td class="board-frozen-note">loading the board…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="board-legend">
+        <span><span class="cell c-solved"></span> solved</span>
+        <span><span class="cell c-first"></span> first solver</span>
+        <span><span class="cell c-attempted"></span> attempted</span>
+        <span><span class="cell c-none">·</span> untouched</span>
+      </div>
+    </section>
+
+    <section class="problems-section panel paper">
+      <div class="panel-head">
+        <div>
+          <h2>Problems</h2>
+          <p class="panel-sub">every statement carries a "Learn More" footer — that's the point of the contest</p>
+        </div>
+      </div>
+      <div id="problemsIndex" class="problems-grid">
+        <p class="empty-note">the problem index appears once organizers seed the catalog.</p>
+      </div>
+    </section>
+
     <section class="grid-secondary">
       <div class="panel paper bookie-panel">
         <div class="panel-head">
@@ -669,6 +821,9 @@ var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 var prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 var scheduleRows = [];
+var problemsCatalog = [];   // rows from the `problems` table (set/slot/theme/links)
+var gridContestId = null;   // contest whose problems drive the board + index
+var usersMap = null;        // user_id -> {cf_handle, display_name}, lazy-loaded
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -711,6 +866,26 @@ function fmtRelativeShort(date) {
 // phase badge + countdown
 // ---------------------------------------------------------------------------
 
+// Resolve the current contest phase from the schedule rows (§3.2, §4.5).
+// The board is FROZEN from FREEZE until REVEAL (final standings at T+25h); if
+// organizers omit a REVEAL row it simply stays frozen.
+function contestPhase() {
+  var now = Date.now();
+  var at = {};
+  scheduleRows.forEach(function (r) { at[r.phase] = new Date(r.at_time).getTime(); });
+
+  var revealed = at.REVEAL != null && now >= at.REVEAL;
+  var frozen = at.FREEZE != null && now >= at.FREEZE && !revealed;
+
+  var badge = "before";
+  if (revealed) badge = "final";
+  else if (frozen) badge = "frozen";
+  else if (at.OPEN != null && now >= at.OPEN) badge = "live";
+
+  return { badge: badge, frozen: frozen, revealed: revealed,
+           freezeAt: at.FREEZE != null ? new Date(at.FREEZE) : null };
+}
+
 function renderPhase() {
   var badge = document.getElementById("phaseBadge");
   var phaseText = document.getElementById("phaseText");
@@ -727,32 +902,22 @@ function renderPhase() {
   }
 
   var now = Date.now();
-  var byPhase = {};
-  scheduleRows.forEach(function (r) { byPhase[r.phase] = new Date(r.at_time); });
+  var p = contestPhase();
 
-  var openAt = byPhase.OPEN;
-  var freezeAt = byPhase.FREEZE;
-  var closeAt = byPhase.CLOSE;
-
-  var state = "before";
-  if (openAt && now >= openAt.getTime()) state = "live";
-  if (freezeAt && now >= freezeAt.getTime()) state = "frozen";
-  if (closeAt && now >= closeAt.getTime()) state = "closed";
-
-  if (state === "before") {
-    phaseText.textContent = "not started";
-  } else if (state === "live") {
+  if (p.badge === "live") {
     badge.classList.add("is-live");
     phaseText.textContent = "live";
-  } else if (state === "frozen") {
+  } else if (p.badge === "frozen") {
     badge.classList.add("is-frozen");
     phaseText.textContent = "frozen";
-  } else {
+  } else if (p.badge === "final") {
     badge.classList.add("is-closed");
-    phaseText.textContent = "closed";
+    phaseText.textContent = "final";
+  } else {
+    phaseText.textContent = "not started";
   }
 
-  freezeNote.hidden = state !== "frozen";
+  freezeNote.hidden = !p.frozen;
 
   // next phase strictly in the future
   var upcoming = scheduleRows
@@ -852,8 +1017,11 @@ function loadLeaderboard() {
 
   return supabase
     .from("leaderboard")
-    .select("user_id, cf_handle, display_name, total_score, problems_solved")
+    .select("user_id, cf_handle, display_name, total_score, problems_solved, total_wrong, last_ac_seconds")
+    // §4.4 ranking: score desc, total wrong asc, last scoring submission asc.
     .order("total_score", { ascending: false })
+    .order("total_wrong", { ascending: true })
+    .order("last_ac_seconds", { ascending: true, nullsFirst: false })
     .then(function (resp) {
       btn.disabled = false;
       if (resp.error) {
@@ -948,16 +1116,21 @@ function renderRankGraph(snapshots, currentHandles) {
   }).join("");
 }
 
-function loadRankHistory(currentRows) {
+function loadRankHistory(currentRows, untilIso) {
   var currentHandles = {};
   (currentRows || []).forEach(function (r) { currentHandles[r.user_id] = r.cf_handle; });
 
   var sinceIso = new Date(Date.now() - 30 * 3600 * 1000).toISOString();
 
-  return supabase
+  var query = supabase
     .from("leaderboard_snapshots")
     .select("user_id, rank, total_score, taken_at")
-    .gte("taken_at", sinceIso)
+    .gte("taken_at", sinceIso);
+  // During the freeze, cap history at the freeze time so the graph doesn't
+  // leak post-freeze rank movement (§4.5).
+  if (untilIso) query = query.lte("taken_at", untilIso);
+
+  return query
     .order("taken_at", { ascending: true })
     .then(function (resp) {
       if (resp.error) {
@@ -1067,23 +1240,232 @@ function loadSchedule() {
 }
 
 // ---------------------------------------------------------------------------
+// users map (for rendering frozen snapshots, which store only user_id)
+// ---------------------------------------------------------------------------
+
+function ensureUsersMap() {
+  if (usersMap) return Promise.resolve(usersMap);
+  return supabase
+    .from("users")
+    .select("id, cf_handle, display_name")
+    .then(function (resp) {
+      usersMap = {};
+      (resp.data || []).forEach(function (u) { usersMap[u.id] = u; });
+      return usersMap;
+    })
+    .catch(function () { usersMap = {}; return usersMap; });
+}
+
+// ---------------------------------------------------------------------------
+// problems catalog — problem index (§3.3) + board columns (§5.4)
+// ---------------------------------------------------------------------------
+
+function loadProblems() {
+  return supabase
+    .from("problems")
+    .select("contest_id, problem_index, problem_set, slot, title, theme, link, learn_more")
+    .order("problem_set", { ascending: true })
+    .order("slot", { ascending: true })
+    .then(function (resp) {
+      if (resp.error) { renderProblemIndex([]); return; }
+      var rows = resp.data || [];
+      // The board renders one contest; pick the one with the most problems.
+      var counts = {};
+      rows.forEach(function (r) { counts[r.contest_id] = (counts[r.contest_id] || 0) + 1; });
+      gridContestId = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; })[0] || null;
+      problemsCatalog = rows.filter(function (r) { return r.contest_id === gridContestId; });
+      renderProblemIndex(problemsCatalog);
+    })
+    .catch(function () { renderProblemIndex([]); });
+}
+
+function renderProblemIndex(rows) {
+  var el = document.getElementById("problemsIndex");
+  if (!rows.length) {
+    el.innerHTML = '<p class="empty-note">the problem index appears once organizers seed the catalog.</p>';
+    return;
+  }
+  el.innerHTML = rows.map(function (p) {
+    var learn = Array.isArray(p.learn_more) ? p.learn_more : [];
+    var links = "";
+    if (p.link) links += '<a href="' + escapeHtml(p.link) + '" target="_blank" rel="noopener">statement</a>';
+    learn.forEach(function (l) {
+      if (l && l.url) links += '<a class="learn" href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener">' + escapeHtml(l.label || "Learn More") + "</a>";
+    });
+    var setC = (p.problem_set || "").toUpperCase();
+    return '<div class="prob-card">'
+      + '<div class="prob-card-head">'
+      +   '<span class="set-badge set-' + escapeHtml(setC) + '">' + escapeHtml(setC) + (p.slot != null ? p.slot : "") + "</span>"
+      +   '<span class="prob-slot">' + escapeHtml(p.problem_index) + "</span>"
+      + "</div>"
+      + '<div class="prob-title">' + escapeHtml(p.title || p.problem_index) + "</div>"
+      + (p.theme ? '<div class="prob-theme">' + escapeHtml(p.theme) + "</div>" : "")
+      + '<div class="prob-links">' + (links || '<span class="prob-slot">links TBA</span>') + "</div>"
+      + "</div>";
+  }).join("");
+}
+
+// ---------------------------------------------------------------------------
+// per-problem board (§5.4)
+// ---------------------------------------------------------------------------
+
+function renderBoardFrozen() {
+  document.getElementById("boardHead").innerHTML = "";
+  document.getElementById("boardBody").innerHTML =
+    '<tr><td class="board-frozen-note">❄ the per-problem board is frozen — the full grid returns at the reveal.</td></tr>';
+}
+
+function renderBoardHead(cols) {
+  var head = document.getElementById("boardHead");
+  if (!cols.length) { head.innerHTML = ""; return; }
+  var groups = [];
+  cols.forEach(function (c) {
+    var s = (c.problem_set || "?").toUpperCase();
+    if (groups.length && groups[groups.length - 1].set === s) groups[groups.length - 1].n++;
+    else groups.push({ set: s, n: 1 });
+  });
+  var row1 = '<tr><th class="sticky-col" rowspan="2">participant</th>';
+  groups.forEach(function (g) { row1 += '<th class="setgroup" colspan="' + g.n + '">Set ' + escapeHtml(g.set) + "</th>"; });
+  row1 += "</tr>";
+  var row2 = "<tr>";
+  cols.forEach(function (c) { row2 += '<th title="' + escapeHtml(c.title || "") + '">' + escapeHtml(c.problem_index) + "</th>"; });
+  row2 += "</tr>";
+  head.innerHTML = row1 + row2;
+}
+
+function renderBoard(leaderboardRows, resultMap) {
+  var cols = problemsCatalog;
+  var body = document.getElementById("boardBody");
+  if (!cols.length) {
+    document.getElementById("boardHead").innerHTML = "";
+    body.innerHTML = '<tr><td class="board-frozen-note">no problems catalogued yet.</td></tr>';
+    return;
+  }
+  renderBoardHead(cols);
+  if (!leaderboardRows.length) {
+    body.innerHTML = '<tr><td class="board-frozen-note">no participants yet.</td></tr>';
+    return;
+  }
+
+  var html = "";
+  leaderboardRows.forEach(function (r, i) {
+    html += '<tr><td class="sticky-col"><span class="board-rank">' + (i + 1) + "</span>" + escapeHtml(r.cf_handle) + "</td>";
+    var byIndex = resultMap[r.user_id] || {};
+    cols.forEach(function (c) {
+      var cell = byIndex[c.problem_index];
+      var cls = "c-none", txt = "·";
+      if (cell) {
+        if (cell.solved && cell.solve_rank === 1) { cls = "c-first"; txt = ""; }
+        else if (cell.solved) { cls = "c-solved"; txt = "✓"; }
+        else if ((cell.wrong_submissions || 0) > 0) { cls = "c-attempted"; txt = "×"; }
+      }
+      html += '<td><span class="cell ' + cls + '">' + txt + "</span></td>";
+    });
+    html += "</tr>";
+  });
+  body.innerHTML = html;
+}
+
+function loadProblemGrid(leaderboardRows) {
+  if (!gridContestId) { renderBoard(leaderboardRows || [], {}); return Promise.resolve(); }
+  return supabase
+    .from("problem_results")
+    .select("user_id, problem_index, solved, wrong_submissions, solve_rank")
+    .eq("contest_id", gridContestId)
+    .then(function (resp) {
+      var map = {};
+      (resp.data || []).forEach(function (pr) {
+        if (!map[pr.user_id]) map[pr.user_id] = {};
+        map[pr.user_id][pr.problem_index] = pr;
+      });
+      renderBoard(leaderboardRows || [], map);
+    })
+    .catch(function () { renderBoard(leaderboardRows || [], {}); });
+}
+
+// ---------------------------------------------------------------------------
+// frozen standings (§4.5) — drawn from the snapshot taken at T+23h
+// ---------------------------------------------------------------------------
+
+function loadFrozenStandings() {
+  var p = contestPhase();
+  if (!p.freezeAt) return loadLeaderboard();
+
+  var freezeIso = p.freezeAt.toISOString();
+  return ensureUsersMap().then(function () {
+    return supabase
+      .from("leaderboard_snapshots")
+      .select("taken_at")
+      .lte("taken_at", freezeIso)
+      .order("taken_at", { ascending: false })
+      .limit(1)
+      .then(function (resp) {
+        var rows = resp.data || [];
+        if (!rows.length) {
+          document.getElementById("tblBody").innerHTML =
+            '<tr class="state-row"><td colspan="4">board frozen — the pre-freeze snapshot will appear shortly.</td></tr>';
+          document.getElementById("lastUpdated").textContent = "frozen";
+          return [];
+        }
+        var t = rows[0].taken_at;
+        return supabase
+          .from("leaderboard_snapshots")
+          .select("user_id, rank, total_score, problems_solved")
+          .eq("taken_at", t)
+          .order("rank", { ascending: true })
+          .then(function (r2) {
+            var snap = (r2.data || []).map(function (s) {
+              var u = (usersMap && usersMap[s.user_id]) || {};
+              return {
+                user_id: s.user_id,
+                cf_handle: u.cf_handle || "?",
+                display_name: u.display_name,
+                total_score: s.total_score,
+                problems_solved: s.problems_solved
+              };
+            });
+            renderLeaderboardRows(snap);
+            document.getElementById("lastUpdated").textContent = "frozen at T+23h";
+            return snap;
+          });
+      });
+  }).catch(function () { return []; });
+}
+
+// ---------------------------------------------------------------------------
 // orchestration
 // ---------------------------------------------------------------------------
 
-document.getElementById("btnRefresh").addEventListener("click", function () {
-  loadLeaderboard().then(function (rows) { loadRankHistory(rows); });
-});
+// One entry point for standings + board + rank graph, honouring the freeze.
+function refreshStandings() {
+  var p = contestPhase();
+  if (p.frozen) {
+    renderBoardFrozen();
+    return loadFrozenStandings().then(function (rows) {
+      loadRankHistory(rows, p.freezeAt.toISOString());
+      return rows;
+    });
+  }
+  return loadLeaderboard().then(function (rows) {
+    loadRankHistory(rows);
+    loadProblemGrid(rows);
+    return rows;
+  });
+}
+
+document.getElementById("btnRefresh").addEventListener("click", refreshStandings);
 
 function boot() {
   loadSchedule();
   loadAnnouncements();
   loadPredictions();
-  loadLeaderboard().then(function (rows) { loadRankHistory(rows); });
+  loadProblems();
+  refreshStandings();
 }
 
 boot();
 setInterval(renderPhase, 1000);
-setInterval(function () { loadLeaderboard().then(function (rows) { loadRankHistory(rows); }); }, 45000);
+setInterval(refreshStandings, 45000);
 </script>
 
 </body>
