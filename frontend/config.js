@@ -19,3 +19,16 @@
 
 var SUPABASE_URL = "https://wrdwuzmjzcscolhjejtk.supabase.co";
 var SUPABASE_ANON_KEY = "sb_publishable_GOMh7WzL9wPBcnYY_fjt_A_0qTRQuHs";
+
+// ---------------------------------------------------------------------------
+// Countdown target
+// ---------------------------------------------------------------------------
+// The big hero countdown ticks down to this moment. Hardcode an ISO 8601
+// timestamp here (include the timezone offset), OR leave it null to fall back
+// to the contest_schedule table in Supabase — the countdown then targets the
+// next upcoming phase (or CLOSE), whichever the DB says comes next.
+//
+//   Hardcoded example (10:00 IST, 2 Sep 2026):
+//   var COUNTDOWN_TARGET = "2026-09-02T10:00:00+05:30";
+var COUNTDOWN_TARGET = null;
+var COUNTDOWN_LABEL = "until the contest closes";  // shown under the digits
