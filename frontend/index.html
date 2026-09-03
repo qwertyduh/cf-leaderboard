@@ -3,44 +3,58 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>first/AC — Njack</title>
-<meta name="description" content="Live standings for Njack's 24-hour freshman orientation contest.">
+<title>The First AC — Njack Orientation Contest</title>
+<meta name="description" content="Live standings, announcements, and side quests for Njack's 24-hour freshman orientation programming contest.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
 
 <style>
 /* ==========================================================================
-   tokens
+   tokens — from design.md §2–§4 (implemented exactly)
    ========================================================================== */
 :root {
-  --ink:          #12181b;
-  --ink-panel:    #1a2226;
-  --ink-line:     #2b363b;
-  --text-hi:      #ede7d6;
-  --text-lo:      #8a949c;
+  --paper:        #F3F0E9;
+  --paper-panel:  #EAE6DC;
+  --paper-sunk:   #E2DDD0;
 
-  --paper:        #f2ecdd;
-  --paper-2:      #e9e1cb;
-  --paper-line:   #d3c6a4;
-  --ink-on-paper: #1e2427;
-  --muted-on-paper: #71685a;
+  --ink:          #0A0A0A;
+  --ink-soft:     #2B2A27;
+  --ink-muted:    #6B675E;
 
-  --accepted:     #3ddc84;
-  --accepted-dim: #237a4a;
-  --pending:      #f5a623;
-  --wrong:        #ff6b5e;
-  --bronze:       #b8794f;
+  --accent:       #987654;
+  --accent-deep:  #6F5638;
 
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
-  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --font-body:    "Inter", -apple-system, "Segoe UI", sans-serif;
+  --line:         rgba(10,10,10,0.16);
+  --line-strong:  rgba(10,10,10,0.42);
 
-  --radius: 3px;
+  --ok:           #3C7A4E;
+  --warn:         #B07B2C;
+  --bad:          #A6483C;
+
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-body:    "Inter", system-ui, -apple-system, Arial, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --fs-display: clamp(3.25rem, 9vw, 8rem);
+  --fs-h1:      clamp(2.5rem, 6vw, 5rem);
+  --fs-h2:      clamp(1.9rem, 4vw, 3.25rem);
+  --fs-h3:      clamp(1.4rem, 2.5vw, 2rem);
+  --fs-lead:    clamp(1.1rem, 1.6vw, 1.375rem);
+  --fs-body:    1.0625rem;
+  --fs-small:   0.875rem;
+  --fs-label:   0.72rem;
+
+  --maxw: 1280px;
+  --gutter: clamp(1.25rem, 4vw, 4rem);
+  --space-1: 0.5rem; --space-2: 1rem; --space-3: 1.5rem;
+  --space-4: 2rem; --space-6: 3rem; --space-8: 5rem; --space-12: 8rem;
+  --radius: 2px;
+  --border: 1px solid var(--line);
 }
 
 /* ==========================================================================
@@ -48,1383 +62,786 @@
    ========================================================================== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { color-scheme: dark; }
+html { color-scheme: light; scroll-behavior: smooth; }
 
 body {
-  background: var(--ink);
-  color: var(--text-hi);
+  background: var(--paper);
+  color: var(--ink);
   font-family: var(--font-body);
-  line-height: 1.5;
+  font-size: var(--fs-body);
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-a { color: inherit; }
+a { color: var(--ink); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { color: var(--accent); }
 
-:focus-visible {
-  outline: 2px solid var(--accepted);
-  outline-offset: 2px;
-}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+::selection { background: var(--accent); color: var(--paper); }
 
-::selection { background: var(--accepted); color: var(--ink); }
+.wrap { max-width: var(--maxw); margin: 0 auto; padding-inline: var(--gutter); }
 
-.wrap {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 0 20px;
-}
-
-/* faint vignette so the dark background isn't a flat void */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background:
-    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(61,220,132,0.08), transparent 60%),
-    radial-gradient(ellipse 700px 500px at 100% 10%, rgba(245,166,35,0.06), transparent 60%);
-  pointer-events: none;
-}
-
-/* ==========================================================================
-   topbar
-   ========================================================================== */
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: rgba(18,24,27,0.92);
-  backdrop-filter: blur(6px);
-  border-bottom: 1px solid var(--ink-line);
-}
-
-.topbar-inner {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 14px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.brand {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.15rem;
-  letter-spacing: -0.01em;
-}
-
-.brand-slash { color: var(--accepted); }
-
-.status-cluster {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.kicker {
   font-family: var(--font-mono);
-  font-size: 0.78rem;
-}
-
-.phase-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--ink-line);
-  color: var(--text-lo);
+  font-size: var(--fs-label);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.12em;
+  color: var(--accent);
 }
-
-.phase-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-lo);
-}
-
-.phase-badge.is-live { color: var(--accepted); border-color: var(--accepted-dim); }
-.phase-badge.is-live .phase-dot { background: var(--accepted); animation: pulse 1.6s ease-in-out infinite; }
-.phase-badge.is-frozen { color: var(--pending); border-color: #7a5a1a; }
-.phase-badge.is-frozen .phase-dot { background: var(--pending); }
-.phase-badge.is-closed { color: var(--text-lo); }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-
-.countdown { color: var(--text-lo); white-space: nowrap; }
-.countdown strong { color: var(--text-hi); font-weight: 500; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.rule { border: none; border-top: 1px solid var(--line-strong); }
 
 /* ==========================================================================
-   ticker — the "judge terminal"
+   masthead (§5, §6.1)
    ========================================================================== */
-.ticker {
-  background: var(--ink-panel);
-  border-bottom: 1px solid var(--ink-line);
-  overflow: hidden;
+.masthead { padding-top: var(--space-4); }
+.masthead-top {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--space-2);
+  font-family: var(--font-mono); font-size: var(--fs-label);
+  text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-muted);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--space-1);
 }
-
-.ticker-inner {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 9px 20px;
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  display: flex;
-  gap: 10px;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.ticker-prompt { color: var(--accepted-dim); flex-shrink: 0; }
-.ticker-text { color: var(--text-lo); overflow: hidden; text-overflow: ellipsis; }
-.ticker-cursor {
-  color: var(--accepted);
-  animation: blink 1s step-end infinite;
-  flex-shrink: 0;
-}
-
-@keyframes blink { 50% { opacity: 0; } }
-
-/* ==========================================================================
-   hero
-   ========================================================================== */
-.hero {
-  padding: 56px 0 40px;
-  max-width: 640px;
-}
-
-.eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--pending);
-  margin-bottom: 14px;
-}
-
-.hero h1 {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: clamp(2.1rem, 5.5vw, 3.4rem);
-  line-height: 1.05;
-  letter-spacing: -0.01em;
-}
-
-.hero h1 .accent {
-  color: var(--accepted);
-  font-style: italic;
-  font-weight: 500;
-}
-
-.hero-sub {
-  margin-top: 16px;
-  font-size: 1.02rem;
-  color: var(--text-lo);
-  max-width: 52ch;
-}
-
-/* ==========================================================================
-   panels
-   ========================================================================== */
-.panel {
-  border-radius: var(--radius);
-  padding: 22px;
-}
-
-.panel.paper {
-  background: var(--paper);
-  color: var(--ink-on-paper);
-  box-shadow: 0 1px 0 rgba(0,0,0,0.4), 0 12px 30px -18px rgba(0,0,0,0.6);
-}
-
-.panel.ink {
-  background: var(--ink-panel);
-  border: 1px solid var(--ink-line);
-}
-
-.panel-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-
-.panel-head h2 {
+.masthead-top .right { text-align: right; }
+.nameplate {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 1.2rem;
+  font-size: var(--fs-display);
+  line-height: 0.92;
+  letter-spacing: -0.02em;
+  text-align: center;
+  padding: var(--space-3) 0 var(--space-2);
 }
-
-.panel.ink .panel-head h2 { color: var(--text-hi); }
-
-.panel-sub {
-  font-size: 0.8rem;
-  color: var(--muted-on-paper);
-  margin-top: 2px;
+.nameplate .the { display: block; font-size: 0.28em; letter-spacing: 0.32em; text-transform: uppercase; color: var(--ink-muted); font-weight: 500; margin-bottom: 0.4em; }
+.nameplate .ac { color: var(--accent); font-style: italic; font-weight: 500; }
+.masthead-sub {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  padding: var(--space-1) 0;
+  font-family: var(--font-mono); font-size: var(--fs-label);
+  text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-soft);
 }
-
-.panel-actions { display: flex; align-items: center; gap: 10px; }
-
-.last-updated {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--muted-on-paper);
+.masthead-sub .dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--ink-muted);
+  display: inline-block; margin-right: 6px; vertical-align: middle;
 }
+.masthead-sub .live { color: var(--bad); }
+.masthead-sub .live .dot { background: var(--bad); animation: pulse 1.6s ease-in-out infinite; }
+.masthead-sub .frozen { color: var(--warn); }
+.masthead-sub .frozen .dot { background: var(--warn); }
+.masthead-sub sep, .masthead-sub .sep { color: var(--line-strong); }
 
-.btn-refresh {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  text-transform: lowercase;
-  letter-spacing: 0.03em;
-  padding: 6px 12px;
-  background: var(--ink-on-paper);
-  color: var(--paper);
-  border: none;
-  border-radius: var(--radius);
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* ==========================================================================
+   nav (§6.1)
+   ========================================================================== */
+.nav {
+  position: sticky; top: 0; z-index: 30;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.nav.scrolled { box-shadow: 0 1px 0 var(--line), 0 6px 16px -12px rgba(10,10,10,0.4); }
+.nav-inner {
+  max-width: var(--maxw); margin: 0 auto; padding: 0 var(--gutter);
+  display: flex; align-items: stretch; gap: clamp(0.5rem, 2vw, 2rem);
+  overflow-x: auto;
+}
+.nav-link {
+  font-family: var(--font-mono); font-size: var(--fs-label);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--ink-muted); text-decoration: none;
+  padding: var(--space-2) 2px; white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  background: none; border-top: none; border-left: none; border-right: none;
   cursor: pointer;
-  transition: transform 0.1s ease, background 0.15s ease;
 }
-
-.btn-refresh::before { content: "↻ "; }
-.btn-refresh:hover { background: #000; }
-.btn-refresh:active { transform: scale(0.96); }
-.btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+.nav-link:hover { color: var(--ink); }
+.nav-link.active { color: var(--ink); border-bottom-color: var(--accent); }
 
 /* ==========================================================================
-   layout grids
+   ticker (§5)
    ========================================================================== */
-.grid-main {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 18px;
-  padding-bottom: 18px;
-}
-
-.grid-secondary {
-  display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  gap: 18px;
-  padding-bottom: 18px;
-}
-
-@media (max-width: 780px) {
-  .grid-main, .grid-secondary { grid-template-columns: 1fr; }
-}
+.ticker { border-bottom: 1px solid var(--line); background: var(--paper-panel); overflow: hidden; }
+.ticker-inner { display: flex; align-items: center; gap: var(--space-2); max-width: var(--maxw); margin: 0 auto; padding: 8px var(--gutter); }
+.ticker-tag { font-family: var(--font-mono); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); flex-shrink: 0; }
+.ticker-track { overflow: hidden; white-space: nowrap; flex: 1; }
+.ticker-move { display: inline-block; padding-left: 100%; animation: marquee 32s linear infinite; font-family: var(--font-mono); font-size: var(--fs-small); color: var(--ink-soft); }
+.ticker:hover .ticker-move { animation-play-state: paused; }
+@keyframes marquee { to { transform: translateX(-100%); } }
 
 /* ==========================================================================
-   leaderboard table
+   sections / tabs
    ========================================================================== */
-.table-wrapper { overflow-x: auto; }
+.tab { display: none; padding-top: var(--space-6); padding-bottom: var(--space-8); }
+.tab.active { display: block; }
 
-.lb-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.92rem;
+.section-head { margin-bottom: var(--space-3); }
+.section-head h2 {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: var(--fs-h2); line-height: 1.0; letter-spacing: -0.01em;
 }
+.section-head .num { font-family: var(--font-mono); color: var(--accent); font-size: 0.5em; margin-right: 0.6em; vertical-align: middle; }
+.section-sub { color: var(--ink-muted); max-width: 68ch; margin-top: var(--space-1); }
 
-.lb-table thead th {
-  text-align: left;
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted-on-paper);
-  padding: 0 10px 10px;
-  border-bottom: 1px solid var(--paper-line);
-  white-space: nowrap;
-}
-
-.lb-table th.num, .lb-table td.num { text-align: right; }
-
-.lb-table tbody tr { border-bottom: 1px solid var(--paper-line); }
-.lb-table tbody tr:last-child { border-bottom: none; }
-.lb-table tbody tr:hover { background: rgba(0,0,0,0.035); }
-
-.lb-table td { padding: 10px; vertical-align: middle; }
-
-.rank-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: 50%;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 0.78rem;
-  background: rgba(0,0,0,0.06);
-}
-
-.rank-chip.r1 { background: var(--accepted); color: #06301a; }
-.rank-chip.r2 { background: var(--pending); color: #402a02; }
-.rank-chip.r3 { background: var(--bronze); color: #2c1608; }
-
-.handle { font-weight: 600; }
-.display-name { font-size: 0.78rem; color: var(--muted-on-paper); margin-left: 6px; }
-
-.score { font-family: var(--font-mono); font-weight: 700; font-variant-numeric: tabular-nums; }
-
-.solved-count {
-  font-family: var(--font-mono);
-  color: var(--accepted-dim);
-}
-
-.state-row td {
-  text-align: center;
-  padding: 36px 16px;
-  color: var(--muted-on-paper);
-  font-size: 0.9rem;
-}
-
-.state-row.error td { color: #a83a2c; }
-
-.freeze-note {
-  margin-top: 14px;
-  font-family: var(--font-mono);
-  font-size: 0.76rem;
-  color: var(--muted-on-paper);
-  border-top: 1px dashed var(--paper-line);
-  padding-top: 10px;
-}
-
-.freeze-note::before { content: "❄ "; }
+.block-rule { border-top: 1px solid var(--line-strong); margin: var(--space-6) 0 var(--space-4); }
 
 /* ==========================================================================
-   rank-over-time graph
+   countdown hero (feature 1)
    ========================================================================== */
-.rank-graph { width: 100%; }
-.rank-graph svg { width: 100%; height: auto; display: block; }
-.rank-graph .grid-line { stroke: var(--paper-line); stroke-width: 1; }
-.rank-graph .axis-label { font-family: var(--font-mono); font-size: 9px; fill: var(--muted-on-paper); }
-.rank-graph .rank-line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.rank-graph .rank-dot { fill: var(--ink-on-paper); }
-
-.rank-legend {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  margin-top: 12px;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
+.hero { text-align: center; padding: var(--space-4) 0 var(--space-6); }
+.hero .kicker { display: block; margin-bottom: var(--space-2); }
+.hero h1 {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: var(--fs-h1); line-height: 0.98; letter-spacing: -0.015em;
+  max-width: 20ch; margin: 0 auto var(--space-4);
 }
+.hero h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 
-.rank-legend li { display: flex; align-items: center; gap: 6px; }
-.rank-legend .swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-
-.empty-note {
-  font-size: 0.85rem;
-  color: var(--muted-on-paper);
-  padding: 20px 4px;
+.countdown { display: flex; justify-content: center; gap: clamp(0.5rem, 3vw, 2.5rem); flex-wrap: wrap; }
+.cd-unit { min-width: clamp(64px, 15vw, 130px); }
+.cd-num {
+  font-family: var(--font-mono); font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(3rem, 12vw, 7.5rem);
+  line-height: 0.95; letter-spacing: -0.02em; color: var(--ink);
 }
+.cd-label { font-family: var(--font-mono); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-muted); margin-top: 4px; }
+.cd-sep { font-family: var(--font-mono); font-weight: 700; font-size: clamp(2rem, 8vw, 5rem); color: var(--line-strong); align-self: flex-start; margin-top: 0.2em; }
+.cd-caption { font-family: var(--font-mono); font-size: var(--fs-small); text-transform: uppercase; letter-spacing: 0.14em; color: var(--accent); margin-top: var(--space-3); }
+.cd-done { font-family: var(--font-display); font-style: italic; font-size: var(--fs-h3); color: var(--ink-soft); }
 
 /* ==========================================================================
-   bookie's table
+   leaderboard table (§6.2, feature 3)
    ========================================================================== */
-.predictions-list { display: flex; flex-direction: column; gap: 18px; }
-
-.prediction {
-  border-top: 1px dashed var(--paper-line);
-  padding-top: 14px;
+.panel-actions { display: flex; align-items: center; gap: var(--space-2); justify-content: flex-end; margin-bottom: var(--space-2); }
+.last-updated { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.btn {
+  font-family: var(--font-mono); font-size: var(--fs-label);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 8px 14px; border-radius: var(--radius); cursor: pointer;
 }
+.btn-primary { background: var(--ink); color: var(--paper); border: 1px solid var(--ink); }
+.btn-primary:hover { background: var(--accent-deep); border-color: var(--accent-deep); }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.prediction:first-child { border-top: none; padding-top: 0; }
-
-.prediction-q {
-  font-weight: 600;
-  margin-bottom: 10px;
-  font-size: 0.95rem;
-}
-
-.prediction.is-closed .prediction-q::after {
-  content: "closed";
-  margin-left: 8px;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  color: var(--muted-on-paper);
-  border: 1px solid var(--paper-line);
-  border-radius: 999px;
-  padding: 1px 7px;
-  vertical-align: middle;
-}
-
-.prediction-option { margin-bottom: 8px; }
-
-.prediction-option-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.82rem;
-  margin-bottom: 3px;
-  font-family: var(--font-mono);
-}
-
-.prediction-bar-track {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--paper-2);
-  overflow: hidden;
-}
-
-.prediction-bar-fill {
-  height: 100%;
-  background: var(--accepted-dim);
-  border-radius: 999px;
-}
-
-/* ==========================================================================
-   side quests
-   ========================================================================== */
-.quest-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
-
-.quest-list li {
-  display: flex;
-  gap: 12px;
-  align-items: baseline;
-  font-size: 0.9rem;
-  color: var(--text-lo);
-}
-
-.quest-icon {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: var(--pending);
-  flex-shrink: 0;
-  width: 1.2em;
-}
-
-/* ==========================================================================
-   announcements
-   ========================================================================== */
-.announcements-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
-
-.announcement {
-  display: flex;
-  gap: 10px;
-  font-size: 0.9rem;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--paper-line);
-}
-
-.announcement:last-child { border-bottom: none; padding-bottom: 0; }
-
-.announcement.is-pinned .announcement-body::before {
-  content: "📌 ";
-}
-
-.announcement-time {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--muted-on-paper);
-  white-space: nowrap;
-  flex-shrink: 0;
-  padding-top: 2px;
-}
-
-/* ==========================================================================
-   footer
-   ========================================================================== */
-.site-footer {
-  border-top: 1px solid var(--ink-line);
-  margin-top: 40px;
-  padding: 26px 0 50px;
-  text-align: center;
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  color: var(--text-lo);
-}
-
-.site-footer strong { color: var(--text-hi); }
-
-/* ==========================================================================
-   sections spacing
-   ========================================================================== */
-main { padding-top: 4px; }
-.announcements-section { margin-bottom: 18px; }
-.board-section, .problems-section { margin-bottom: 18px; }
-
-/* ==========================================================================
-   per-problem board (ICPC-style solved/attempted/first-solver grid, §5.4)
-   ========================================================================== */
-.board-table { border-collapse: separate; border-spacing: 0; font-size: 0.82rem; }
-
-.board-table thead th {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted-on-paper);
-  padding: 4px 6px 10px;
-  border-bottom: 1px solid var(--paper-line);
-  white-space: nowrap;
-  text-align: center;
-}
-
-.board-table thead th.setgroup {
-  border-bottom: 2px solid var(--ink-on-paper);
-  font-weight: 700;
-  color: var(--ink-on-paper);
-}
-
-.board-table th.sticky-col, .board-table td.sticky-col {
-  position: sticky;
-  left: 0;
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); }
+.lb {
+  width: 100%; border-collapse: collapse; font-size: var(--fs-small);
   background: var(--paper);
-  text-align: left;
-  z-index: 1;
-  box-shadow: 1px 0 0 var(--paper-line);
-  min-width: 130px;
 }
-
-.board-table td { padding: 4px 5px; text-align: center; }
-.board-table tbody tr:hover td { background: rgba(0,0,0,0.03); }
-.board-table tbody tr:hover td.sticky-col { background: var(--paper-2); }
-
-.board-rank { color: var(--muted-on-paper); font-family: var(--font-mono); margin-right: 6px; }
-
-.cell {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 22px;
-  border-radius: var(--radius);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  font-weight: 600;
-  border: 1px solid transparent;
+.lb caption { text-align: left; font-family: var(--font-mono); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-muted); padding: var(--space-2); }
+.lb thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--paper-panel);
+  text-align: left; font-family: var(--font-mono); font-size: var(--fs-label);
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink);
+  padding: 10px 14px; border-bottom: 1px solid var(--line-strong); white-space: nowrap;
 }
-
-.cell.c-none      { color: var(--paper-line); }
-.cell.c-attempted { background: rgba(255,107,94,0.16); color: #a83a2c; border-color: rgba(255,107,94,0.4); }
-.cell.c-solved    { background: var(--accepted); color: #06301a; }
-.cell.c-first     { background: var(--accepted); color: #06301a; border-color: var(--pending); box-shadow: 0 0 0 1px var(--pending); }
-.cell.c-first::after { content: "★"; font-size: 0.6rem; margin-left: 1px; color: #402a02; }
-
-.board-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  margin-top: 14px;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--muted-on-paper);
-}
-.board-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.board-legend .cell { width: 18px; height: 16px; }
+.lb th.n, .lb td.n { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.lb tbody td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.lb tbody tr:nth-child(even) { background: var(--paper-panel); }
+.lb tbody tr:hover td { background: var(--paper-sunk); }
+.lb tbody tr.top3 td { border-bottom-color: var(--line); }
+.lb tbody tr.top3-last td { border-bottom: 2px solid var(--line-strong); }
+.lb .rank { font-family: var(--font-mono); font-weight: 700; color: var(--ink); }
+.lb tr.r1 .rank, .lb tr.r2 .rank, .lb tr.r3 .rank { color: var(--accent); }
+.lb .seal { color: var(--accent); margin-left: 6px; }
+.lb .handle { font-weight: 600; }
+.lb .disp { color: var(--ink-muted); font-size: 0.85em; margin-left: 8px; }
+.lb .score { font-weight: 700; }
+@keyframes rowflash { 0% { background: rgba(152,118,84,0.22); } 100% { background: transparent; } }
+.lb tbody tr.flash td { animation: rowflash 1.4s ease-out; }
+.state-row td { text-align: center; color: var(--ink-muted); padding: var(--space-6); }
+.state-row.err td { color: var(--bad); }
+.freeze-line { font-family: var(--font-mono); font-size: var(--fs-small); color: var(--warn); margin-top: var(--space-2); }
+.freeze-line::before { content: "❄ "; }
 
 /* ==========================================================================
-   problem index + Learn More footers (§3.3, §5.4)
+   top-5 graph (feature 4)
    ========================================================================== */
-.problems-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 12px;
-}
+.graph-wrap { border: 1px solid var(--line); padding: var(--space-3); background: var(--paper); }
+.graph-wrap svg { width: 100%; height: auto; display: block; }
+.graph-grid { stroke: var(--line); stroke-width: 1; }
+.graph-axis { font-family: var(--font-mono); font-size: 10px; fill: var(--ink-muted); }
+.graph-line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.graph-dot { stroke: var(--paper); stroke-width: 1.5; }
+.graph-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: var(--space-2); font-family: var(--font-mono); font-size: var(--fs-small); }
+.graph-legend li { display: flex; align-items: center; gap: 7px; }
+.graph-legend .sw { width: 10px; height: 3px; display: inline-block; }
 
-.prob-card {
-  border: 1px solid var(--paper-line);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  background: var(--paper-2);
-}
-
-.prob-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-
-.set-badge {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 0.7rem;
-  padding: 1px 7px;
-  border-radius: 999px;
-  color: #fff;
-}
-.set-badge.set-A { background: var(--accepted-dim); }
-.set-badge.set-B { background: #7a5a1a; }
-.set-badge.set-C { background: var(--bronze); }
-
-.prob-slot { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted-on-paper); }
-.prob-title { font-weight: 600; font-size: 0.92rem; margin-bottom: 2px; }
-.prob-theme { font-size: 0.78rem; color: var(--muted-on-paper); margin-bottom: 8px; }
-
-.prob-links { display: flex; flex-wrap: wrap; gap: 6px 12px; font-family: var(--font-mono); font-size: 0.72rem; }
-.prob-links a { color: var(--accepted-dim); text-decoration: none; border-bottom: 1px dotted var(--accepted-dim); }
-.prob-links a.learn::before { content: "↗ "; }
-
-.board-frozen-note {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: var(--muted-on-paper);
-  padding: 28px 8px;
-  text-align: center;
-}
+.two-col { display: grid; grid-template-columns: 1.5fr 1fr; gap: var(--space-4); align-items: start; }
+@media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
 
 /* ==========================================================================
-   reduced motion
+   hidden-challenge circles (feature 5)
    ========================================================================== */
+.circles { display: flex; flex-wrap: wrap; gap: clamp(0.75rem, 2vw, 1.4rem); }
+.circle-item { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 88px; text-align: center; }
+.circle {
+  width: 54px; height: 54px; border-radius: 50%;
+  border: 1.5px solid var(--line-strong); background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: var(--fs-label); color: var(--ink-muted);
+  transition: background 0.4s ease, box-shadow 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+}
+.circle.lit {
+  background: var(--accent); border-color: var(--accent-deep); color: var(--paper);
+  box-shadow: 0 0 0 4px rgba(152,118,84,0.18), 0 0 18px -2px rgba(152,118,84,0.6);
+}
+.circle-label { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--ink-muted); line-height: 1.2; }
+.circle.lit + .circle-label { color: var(--ink); }
+.circles-meta { font-family: var(--font-mono); font-size: var(--fs-small); color: var(--ink-muted); margin-top: var(--space-3); }
+
+/* ==========================================================================
+   announcements feed (§6.3)
+   ========================================================================== */
+.feed { display: flex; flex-direction: column; }
+.article { padding: var(--space-4) 0; border-top: 1px solid var(--line); }
+.article:first-child { border-top: none; }
+.article-meta { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
+.article-time { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.article h3 { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-h3); line-height: 1.05; letter-spacing: -0.01em; }
+.article.pinned .kicker::after { content: " · pinned"; }
+
+/* ==========================================================================
+   info / rules (§6.4)
+   ========================================================================== */
+.prose { max-width: 72ch; }
+.prose p { margin-bottom: var(--space-3); color: var(--ink-soft); }
+.prose h3 { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-h3); margin: var(--space-4) 0 var(--space-2); }
+.dl { display: grid; grid-template-columns: max-content 1fr; gap: 10px var(--space-3); margin: var(--space-2) 0 var(--space-4); }
+.dl dt { font-family: var(--font-mono); font-size: var(--fs-small); text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
+.dl dd { color: var(--ink-soft); }
+.callout { border: 1px solid var(--line); background: var(--paper-panel); padding: var(--space-3); margin: var(--space-3) 0; }
+.callout .kicker { display: block; margin-bottom: var(--space-1); }
+.ol-rules { list-style: none; counter-reset: r; max-width: 72ch; }
+.ol-rules li { counter-increment: r; padding: var(--space-2) 0 var(--space-2) 3rem; border-top: 1px solid var(--line); position: relative; color: var(--ink-soft); }
+.ol-rules li:first-child { border-top: none; }
+.ol-rules li::before { content: counter(r, decimal-leading-zero); position: absolute; left: 0; top: var(--space-2); font-family: var(--font-mono); color: var(--accent); font-size: var(--fs-small); }
+
+/* club PR (feature 6) */
+.club { display: grid; grid-template-columns: auto 1fr; gap: var(--space-4); align-items: center; border: 1px solid var(--line-strong); padding: var(--space-4); background: var(--paper-panel); }
+@media (max-width: 640px) { .club { grid-template-columns: 1fr; text-align: center; } }
+.club h3 { font-family: var(--font-display); font-size: var(--fs-h3); font-weight: 600; margin-bottom: var(--space-1); }
+.club p { color: var(--ink-soft); max-width: 60ch; }
+.club-cta { margin-top: var(--space-2); display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.btn-outline { background: transparent; color: var(--ink); border: 1px solid var(--line-strong); text-decoration: none; display: inline-block; }
+.btn-outline:hover { background: var(--paper-sunk); color: var(--ink); }
+
+/* seal / stamp (§5) */
+.seal { width: 108px; height: 108px; }
+.seal text { font-family: var(--font-mono); font-size: 7.4px; letter-spacing: 2px; fill: var(--accent); text-transform: uppercase; }
+.seal .ring { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+.seal .core { font-family: var(--font-display); font-size: 15px; fill: var(--ink); letter-spacing: 0; }
+
+/* ==========================================================================
+   resources (feature 2)
+   ========================================================================== */
+.res-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3); }
+.res-card { border: 1px solid var(--line); padding: var(--space-3); background: var(--paper); }
+.res-card .kicker { display: block; margin-bottom: var(--space-1); }
+.res-card h3 { font-family: var(--font-display); font-weight: 600; font-size: 1.35rem; margin-bottom: 4px; }
+.res-card p { color: var(--ink-muted); font-size: var(--fs-small); margin-bottom: var(--space-2); }
+.res-card a { font-family: var(--font-mono); font-size: var(--fs-small); color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent); }
+.res-card a::after { content: " ↗"; }
+
+/* ==========================================================================
+   footer (§6.5)
+   ========================================================================== */
+.site-footer { border-top: 1px solid var(--line-strong); padding: var(--space-6) 0 var(--space-8); margin-top: var(--space-6); }
+.footer-inner { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; font-family: var(--font-mono); font-size: var(--fs-small); color: var(--ink-muted); }
+.footer-inner a { color: var(--ink-muted); }
+.footer-inner a:hover { color: var(--accent); }
+.footer-links { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+
+.empty { color: var(--ink-muted); padding: var(--space-4) 0; font-style: italic; }
+
+/* ==========================================================================
+   motion (§7)
+   ========================================================================== */
+.reveal { opacity: 0; transform: translateY(14px); transition: opacity 0.5s ease-out, transform 0.5s ease-out; }
+.reveal.in { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) {
-  .phase-badge.is-live .phase-dot,
-  .ticker-cursor { animation: none; }
+  html { scroll-behavior: auto; }
+  .ticker-move { animation: none; padding-left: 0; }
+  .masthead-sub .live .dot { animation: none; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .lb tbody tr.flash td { animation: none; }
 }
 </style>
 </head>
 <body>
 
-<header class="topbar">
-  <div class="topbar-inner">
-    <span class="brand">first<span class="brand-slash">/</span>AC</span>
-    <div class="status-cluster">
-      <span id="phaseBadge" class="phase-badge"><span class="phase-dot"></span><span id="phaseText">loading</span></span>
-      <span id="countdown" class="countdown"></span>
-    </div>
+<!-- ═══ masthead (§5) ═══ -->
+<header class="masthead wrap">
+  <div class="masthead-top">
+    <span>NIT · Campus Edition</span>
+    <span class="right" id="mastheadDate">—</span>
+  </div>
+  <div class="nameplate">
+    <span class="the">Njack presents</span>
+    The First <span class="ac">AC</span>
+  </div>
+  <div class="masthead-sub">
+    <span>24-Hour Freshman Contest</span>
+    <span class="sep">·</span>
+    <span>Vol. I</span>
+    <span class="sep">·</span>
+    <span id="statusTag"><span class="dot"></span>loading</span>
   </div>
 </header>
 
+<!-- ═══ nav (§6.1) ═══ -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <button class="nav-link active" data-tab="leaderboard">Leaderboard</button>
+    <button class="nav-link" data-tab="announcements">Announcements</button>
+    <button class="nav-link" data-tab="info">Info</button>
+    <button class="nav-link" data-tab="rules">Rules</button>
+    <button class="nav-link" data-tab="resources">Resources</button>
+  </div>
+</nav>
+
+<!-- ═══ ticker (§5) ═══ -->
 <div class="ticker">
   <div class="ticker-inner">
-    <span class="ticker-prompt">$ judge.log --tail</span>
-    <span id="tickerText" class="ticker-text"></span><span class="ticker-cursor">▌</span>
+    <span class="ticker-tag">⚠ Wire</span>
+    <div class="ticker-track"><span class="ticker-move" id="tickerMove">Standings load live from the judge — announcements will scroll here.</span></div>
   </div>
 </div>
 
-<div class="wrap">
-  <main>
+<main class="wrap">
 
-    <section class="hero">
-      <p class="eyebrow">Njack presents</p>
-      <h1>Everyone gets an <span class="accent">AC</span>.</h1>
-      <p class="hero-sub">
-        24 problems, three sets, one 24-hour clock. Rank is a side effect —
-        the only number that actually matters is whether you got at least
-        one green verdict.
-      </p>
-    </section>
+  <!-- ══════════════ LEADERBOARD TAB ══════════════ -->
+  <section class="tab active" id="tab-leaderboard">
 
-    <section class="grid-main">
-      <div class="panel paper leaderboard-panel">
-        <div class="panel-head">
-          <h2>Standings</h2>
-          <div class="panel-actions">
-            <span id="lastUpdated" class="last-updated"></span>
-            <button id="btnRefresh" class="btn-refresh">refresh</button>
-          </div>
+    <!-- feature 1: countdown hero -->
+    <div class="hero">
+      <span class="kicker">The clock</span>
+      <h1>Everyone leaves with at least one <em>green verdict</em>.</h1>
+      <div class="countdown" id="countdown" aria-live="polite">
+        <div class="cd-unit"><div class="cd-num" id="cdDays">--</div><div class="cd-label">days</div></div>
+        <div class="cd-sep">:</div>
+        <div class="cd-unit"><div class="cd-num" id="cdHours">--</div><div class="cd-label">hours</div></div>
+        <div class="cd-sep">:</div>
+        <div class="cd-unit"><div class="cd-num" id="cdMins">--</div><div class="cd-label">minutes</div></div>
+        <div class="cd-sep">:</div>
+        <div class="cd-unit"><div class="cd-num" id="cdSecs">--</div><div class="cd-label">seconds</div></div>
+      </div>
+      <p class="cd-caption" id="cdCaption"></p>
+    </div>
+
+    <hr class="block-rule">
+
+    <!-- feature 3: leaderboard from the DB -->
+    <div class="section-head">
+      <h2><span class="num">01</span>Standings</h2>
+      <p class="section-sub">Live from the judge. Rank is a side effect — the number that matters is your solve count.</p>
+    </div>
+    <div class="panel-actions">
+      <span class="last-updated" id="lastUpdated"></span>
+      <button class="btn btn-primary" id="btnRefresh">Refresh</button>
+    </div>
+    <div class="table-scroll">
+      <table class="lb">
+        <caption>Freshman Orientation Contest — official standings</caption>
+        <thead>
+          <tr>
+            <th class="n" scope="col">Rank</th>
+            <th scope="col">Contestant</th>
+            <th class="n" scope="col">Solved</th>
+            <th class="n" scope="col">Score</th>
+          </tr>
+        </thead>
+        <tbody id="lbBody">
+          <tr class="state-row"><td colspan="4">Loading standings…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="freeze-line" id="freezeLine" hidden>Board frozen — the standings you see are the T+23h snapshot. Final results drop at the reveal.</p>
+
+    <hr class="block-rule">
+
+    <div class="two-col">
+      <!-- feature 4: top-5 movement graph -->
+      <div>
+        <div class="section-head">
+          <h2><span class="num">02</span>Top five, in motion</h2>
+          <p class="section-sub">How the front of the pack has traded places over the contest.</p>
         </div>
-        <div class="table-wrapper">
-          <table class="lb-table">
-            <thead>
-              <tr>
-                <th class="num">#</th>
-                <th>handle</th>
-                <th class="num">score</th>
-                <th class="num">AC</th>
-              </tr>
-            </thead>
-            <tbody id="tblBody">
-              <tr class="state-row"><td colspan="4">loading standings…</td></tr>
-            </tbody>
-          </table>
+        <div class="graph-wrap">
+          <div id="graph"><p class="empty">History starts drawing once the judge has polled a few times.</p></div>
         </div>
-        <p id="freezeNote" class="freeze-note" hidden>board frozen — final standings drop at reveal</p>
+        <ul class="graph-legend" id="graphLegend"></ul>
       </div>
 
-      <div class="panel paper rankgraph-panel">
-        <div class="panel-head"><h2>Rank over time</h2></div>
-        <div id="rankGraph" class="rank-graph"><p class="empty-note">gathering history…</p></div>
-        <ul id="rankLegend" class="rank-legend"></ul>
+      <!-- feature 5: hidden-challenge circles -->
+      <div>
+        <div class="section-head">
+          <h2><span class="num">03</span>Hidden lights</h2>
+          <p class="section-sub">Each circle is a secret side quest. It glows the moment someone cracks it.</p>
+        </div>
+        <div class="circles" id="circles">
+          <p class="empty">The side-quest board wakes up once the first secret is planted.</p>
+        </div>
+        <p class="circles-meta" id="circlesMeta"></p>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <section class="board-section panel paper">
-      <div class="panel-head">
-        <div>
-          <h2>Problem board</h2>
-          <p class="panel-sub">green = solved · ★ = first solver · red = attempted, not yet solved</p>
+  <!-- ══════════════ ANNOUNCEMENTS TAB (§6.3) ══════════════ -->
+  <section class="tab" id="tab-announcements">
+    <div class="section-head">
+      <h2><span class="num">01</span>The wire</h2>
+      <p class="section-sub">Clarifications, release notices, and milestones — newest first.</p>
+    </div>
+    <div class="feed" id="feed">
+      <p class="empty">Nothing on the wire yet. Check back once the briefing starts.</p>
+    </div>
+  </section>
+
+  <!-- ══════════════ INFO TAB (§6.4 + club PR) ══════════════ -->
+  <section class="tab" id="tab-info">
+    <div class="section-head">
+      <h2><span class="num">01</span>How it runs</h2>
+    </div>
+    <div class="prose">
+      <p>Twenty-four problems, released in three themed sets of eight, across one 24-hour clock. Set A is JEE and pre-college life, Set B is film, music and internet culture, Set C is campus life. Every statement ends with a “Learn More” footer — that footer is the point of the whole thing.</p>
+
+      <h3>Schedule</h3>
+      <dl class="dl" id="scheduleDl">
+        <dt>T+0h</dt><dd>Contest opens · Set A released</dd>
+        <dt>T+8h</dt><dd>Set B released</dd>
+        <dt>T+13h</dt><dd>Set C released — all 24 problems now live, before midnight</dd>
+        <dt>T+23h</dt><dd>Leaderboard freezes</dd>
+        <dt>T+24h</dt><dd>Contest closes</dd>
+        <dt>T+25h</dt><dd>Final standings, editorials, and awards</dd>
+      </dl>
+
+      <h3>Scoring</h3>
+      <p>Base points come from a problem’s set and slot (100–600). Each wrong submission decays the value by 15%, floored at 40% — and compile errors never count, so experiment freely. The first three solvers of any problem take a 1.20 / 1.12 / 1.06 bonus. Ties break on fewest wrong submissions, then earliest last solve.</p>
+
+      <div class="callout">
+        <span class="kicker">On sleep</span>
+        Everything is available before midnight by design. Sleeping is expected — the scoring does not reward staying up. The overnight is for the group puzzles, not for grinding.
+      </div>
+
+      <h3>Prizes</h3>
+      <p>Three overall, best-in-set for A/B/C, and a long bench of recognition awards — Certified Wrong Answer Machine, One Shot One Kill, The Comeback, Lone Wolf, Code Golf Champion, and more. The recognition awards carry the majority of the prize count, because most of what’s worth celebrating the leaderboard can’t see.</p>
+    </div>
+
+    <hr class="block-rule">
+
+    <!-- feature 6: light PR for the club -->
+    <div class="section-head"><h2><span class="num">02</span>Who’s behind this</h2></div>
+    <div class="club">
+      <svg class="seal" viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="ring" cx="60" cy="60" r="56"></circle>
+        <circle class="ring" cx="60" cy="60" r="42"></circle>
+        <path id="sealArcTop" d="M 24 60 A 36 36 0 0 1 96 60" fill="none"></path>
+        <path id="sealArcBot" d="M 96 60 A 36 36 0 0 1 24 60" fill="none"></path>
+        <text><textPath href="#sealArcTop" startOffset="50%" text-anchor="middle">Njack Coding Club</textPath></text>
+        <text><textPath href="#sealArcBot" startOffset="50%" text-anchor="middle">Est · Freshers</textPath></text>
+        <text class="core" x="60" y="65" text-anchor="middle">{ }</text>
+      </svg>
+      <div>
+        <h3>Njack — the campus coding club</h3>
+        <p>We run contests, editorials, and weekly practice for people who’d never written a line of competitive code until this weekend. This orientation is the front door. What happens in the 48 hours after it is what actually turns a one-night contest into a habit — so come say hi.</p>
+        <div class="club-cta">
+          <a class="btn btn-outline" href="#" data-club="group">Join the group</a>
+          <a class="btn btn-outline" href="#tab-resources" data-tab-link="resources">Where to go next</a>
         </div>
       </div>
-      <div class="table-wrapper">
-        <table class="board-table">
-          <thead id="boardHead"></thead>
-          <tbody id="boardBody">
-            <tr><td class="board-frozen-note">loading the board…</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="board-legend">
-        <span><span class="cell c-solved"></span> solved</span>
-        <span><span class="cell c-first"></span> first solver</span>
-        <span><span class="cell c-attempted"></span> attempted</span>
-        <span><span class="cell c-none">·</span> untouched</span>
-      </div>
-    </section>
+    </div>
+  </section>
 
-    <section class="problems-section panel paper">
-      <div class="panel-head">
-        <div>
-          <h2>Problems</h2>
-          <p class="panel-sub">every statement carries a "Learn More" footer — that's the point of the contest</p>
-        </div>
-      </div>
-      <div id="problemsIndex" class="problems-grid">
-        <p class="empty-note">the problem index appears once organizers seed the catalog.</p>
-      </div>
-    </section>
+  <!-- ══════════════ RULES TAB (§6.4) ══════════════ -->
+  <section class="tab" id="tab-rules">
+    <div class="section-head">
+      <h2><span class="num">01</span>Rules &amp; conduct</h2>
+      <p class="section-sub">Short version: play fair, be kind, and ask in the open.</p>
+    </div>
+    <ol class="ol-rules">
+      <li>Individual participation. One account per person; multiple accounts are grounds for disqualification.</li>
+      <li>No sharing code, approaches, or hints while the contest is live. Discussion opens after T+24h.</li>
+      <li>Pre-written personal templates and reference material are allowed.</li>
+      <li>AI is permitted only for concept explanation. Requesting or submitting a full solution to a contest problem is not.</li>
+      <li>Organizers don’t compete for prizes. Seniors may play for fun; their scores show separately.</li>
+      <li>Clarifications go through the announcement channel only — answers are broadcast to everyone.</li>
+      <li>Report suspected violations privately to a sub-coordinator. Reports are confidential and reviewed by two organizers.</li>
+      <li>Harassment or targeting of any participant means immediate removal.</li>
+      <li>Organizer decisions on scoring are final, but every dispute is logged and its resolution published.</li>
+    </ol>
+  </section>
 
-    <section class="grid-secondary">
-      <div class="panel paper bookie-panel">
-        <div class="panel-head">
-          <div>
-            <h2>The Bookie's Table</h2>
-            <p class="panel-sub">prediction points only — no cash, no purchase, just bragging rights</p>
-          </div>
-        </div>
-        <div id="predictionsList" class="predictions-list">
-          <p class="empty-note">the board opens once organizers post the first line.</p>
-        </div>
-      </div>
+  <!-- ══════════════ RESOURCES TAB (feature 2) ══════════════ -->
+  <section class="tab" id="tab-resources">
+    <div class="section-head">
+      <h2><span class="num">01</span>Where to go next</h2>
+      <p class="section-sub">The contest generates the spark. These keep it lit — start at the top and work down.</p>
+    </div>
+    <div class="res-grid" id="resGrid"></div>
+  </section>
 
-      <div class="panel ink sidequests-panel">
-        <div class="panel-head"><h2>Side quests</h2></div>
-        <ul class="quest-list">
-          <li><span class="quest-icon">?</span> a hidden URL is tucked somewhere on this page. good luck.</li>
-          <li><span class="quest-icon">#</span> some problems output fragments of a link. collect them all.</li>
-          <li><span class="quest-icon">@</span> a senior is competing under an undisclosed handle. spot them.</li>
-          <li><span class="quest-icon">%</span> physical checkpoints exist on campus. ask around, or find the online equivalent.</li>
-        </ul>
-      </div>
-    </section>
+</main>
 
-    <section class="announcements-section panel paper">
-      <div class="panel-head"><h2>Announcements</h2></div>
-      <ul id="announcementsList" class="announcements-list">
-        <li class="empty-note">nothing posted yet — check back once the briefing starts.</li>
-      </ul>
-    </section>
-
-  </main>
-
-  <footer class="site-footer">
-    <p>built by <strong>Njack</strong> · problems judged on Codeforces · editorials drop at T+25h</p>
-  </footer>
-</div>
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <span>Set &amp; judged on Codeforces · Built by <strong>Njack</strong></span>
+    <span class="footer-links">
+      <a href="#tab-rules" data-tab-link="rules">Rules</a>
+      <a href="#tab-resources" data-tab-link="resources">Resources</a>
+      <a href="#" data-club="group">Group</a>
+    </span>
+    <span id="footerDate">—</span>
+  </div>
+</footer>
 
 <script>
 "use strict";
 
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 var scheduleRows = [];
-var problemsCatalog = [];   // rows from the `problems` table (set/slot/theme/links)
-var gridContestId = null;   // contest whose problems drive the board + index
-var usersMap = null;        // user_id -> {cf_handle, display_name}, lazy-loaded
+var usersMap = null;
+var prevScores = {};   // user_id -> last score, for row-change flashes
+
+// ── resource catalogue (edit here; feature 2) ──────────────────────────────
+var RESOURCES = [
+  { kicker: "Start here", title: "Codeforces", desc: "Make an account and try a Div. 4 round within two weeks — that's the real goal.", url: "https://codeforces.com/", label: "codeforces.com" },
+  { kicker: "Practice", title: "CSES Problem Set", desc: "A clean, ordered ladder of classic problems. The best next step after this contest.", url: "https://cses.fi/problemset/", label: "cses.fi" },
+  { kicker: "Learn", title: "CP-Algorithms", desc: "Readable write-ups of the algorithms you'll keep meeting.", url: "https://cp-algorithms.com/", label: "cp-algorithms.com" },
+  { kicker: "Learn", title: "GeeksforGeeks", desc: "Quick references for language basics and common patterns.", url: "https://www.geeksforgeeks.org/", label: "geeksforgeeks.org" },
+  { kicker: "Reference", title: "cplusplus.com", desc: "The C++ standard library, looked up fast.", url: "https://cplusplus.com/reference/", label: "cplusplus.com" },
+  { kicker: "Community", title: "The Njack group", desc: "Editorials, weekly practice, and the people who ran tonight. Say hi.", url: "#", label: "join the group" }
+];
 
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
-
 function escapeHtml(str) {
-  if (!str) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  if (str === null || str === undefined) return "";
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
-
-function fmtDuration(ms) {
-  if (ms < 0) ms = 0;
-  var s = Math.floor(ms / 1000);
-  var h = Math.floor(s / 3600);
-  var m = Math.floor((s % 3600) / 60);
-  var sec = s % 60;
-  function pad(n) { return n < 10 ? "0" + n : "" + n; }
-  return (h > 0 ? h + ":" : "") + pad(m) + ":" + pad(sec);
+function pad(n) { return n < 10 ? "0" + n : "" + n; }
+function fmtClock(d) { return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+function fmtRelative(d) {
+  var m = Math.round((Date.now() - d.getTime()) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return m + "m ago";
+  var h = Math.round(m / 60);
+  if (h < 24) return h + "h ago";
+  return Math.round(h / 24) + "d ago";
 }
-
-function fmtClockTime(date) {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function fmtRelativeShort(date) {
-  var diffMs = Date.now() - date.getTime();
-  var mins = Math.round(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return mins + "m ago";
-  var hrs = Math.round(mins / 60);
-  return hrs + "h ago";
+function fmtDateLine(d) {
+  var days = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+  var mon = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+  return days[d.getDay()] + " " + pad(d.getDate()) + " " + mon[d.getMonth()] + " " + d.getFullYear();
 }
 
 // ---------------------------------------------------------------------------
-// phase badge + countdown
+// tabs
 // ---------------------------------------------------------------------------
+function showTab(name) {
+  var tabs = document.querySelectorAll(".tab");
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove("active");
+  var target = document.getElementById("tab-" + name);
+  if (!target) { target = document.getElementById("tab-leaderboard"); name = "leaderboard"; }
+  target.classList.add("active");
+  var links = document.querySelectorAll(".nav-link");
+  for (var j = 0; j < links.length; j++) {
+    links[j].classList.toggle("active", links[j].getAttribute("data-tab") === name);
+  }
+  if (history.replaceState) history.replaceState(null, "", "#tab-" + name);
+  window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  runReveal();
+}
 
-// Resolve the current contest phase from the schedule rows (§3.2, §4.5).
-// The board is FROZEN from FREEZE until REVEAL (final standings at T+25h); if
-// organizers omit a REVEAL row it simply stays frozen.
+document.querySelector(".nav-inner").addEventListener("click", function (e) {
+  var btn = e.target.closest(".nav-link");
+  if (btn) showTab(btn.getAttribute("data-tab"));
+});
+document.body.addEventListener("click", function (e) {
+  var link = e.target.closest("[data-tab-link]");
+  if (link) { e.preventDefault(); showTab(link.getAttribute("data-tab-link")); }
+});
+
+// ---------------------------------------------------------------------------
+// contest phase (badge + freeze), from the schedule (§4.5)
+// ---------------------------------------------------------------------------
 function contestPhase() {
-  var now = Date.now();
-  var at = {};
+  var now = Date.now(), at = {};
   scheduleRows.forEach(function (r) { at[r.phase] = new Date(r.at_time).getTime(); });
-
   var revealed = at.REVEAL != null && now >= at.REVEAL;
   var frozen = at.FREEZE != null && now >= at.FREEZE && !revealed;
-
   var badge = "before";
   if (revealed) badge = "final";
   else if (frozen) badge = "frozen";
   else if (at.OPEN != null && now >= at.OPEN) badge = "live";
-
-  return { badge: badge, frozen: frozen, revealed: revealed,
-           freezeAt: at.FREEZE != null ? new Date(at.FREEZE) : null };
+  return { badge: badge, frozen: frozen, freezeAt: at.FREEZE != null ? new Date(at.FREEZE) : null };
 }
 
-function renderPhase() {
-  var badge = document.getElementById("phaseBadge");
-  var phaseText = document.getElementById("phaseText");
-  var countdownEl = document.getElementById("countdown");
-  var freezeNote = document.getElementById("freezeNote");
-
-  badge.classList.remove("is-live", "is-frozen", "is-closed");
-
-  if (!scheduleRows.length) {
-    phaseText.textContent = "schedule TBA";
-    countdownEl.textContent = "";
-    freezeNote.hidden = true;
-    return;
-  }
-
-  var now = Date.now();
+function renderStatus() {
+  var el = document.getElementById("statusTag");
   var p = contestPhase();
+  el.className = "";
+  var text = "not started";
+  if (p.badge === "live") { el.className = "live"; text = "live"; }
+  else if (p.badge === "frozen") { el.className = "frozen"; text = "frozen"; }
+  else if (p.badge === "final") { text = "final"; }
+  el.innerHTML = '<span class="dot"></span>' + text;
+  document.getElementById("freezeLine").hidden = !p.frozen;
+}
 
-  if (p.badge === "live") {
-    badge.classList.add("is-live");
-    phaseText.textContent = "live";
-  } else if (p.badge === "frozen") {
-    badge.classList.add("is-frozen");
-    phaseText.textContent = "frozen";
-  } else if (p.badge === "final") {
-    badge.classList.add("is-closed");
-    phaseText.textContent = "final";
-  } else {
-    phaseText.textContent = "not started";
+// ---------------------------------------------------------------------------
+// countdown (feature 1) — config hardcode OR schedule fallback
+// ---------------------------------------------------------------------------
+function countdownTarget() {
+  if (typeof COUNTDOWN_TARGET === "string" && COUNTDOWN_TARGET) {
+    var t = new Date(COUNTDOWN_TARGET);
+    if (!isNaN(t.getTime())) return { at: t, label: (typeof COUNTDOWN_LABEL === "string" ? COUNTDOWN_LABEL : "") };
   }
-
-  freezeNote.hidden = !p.frozen;
-
-  // next phase strictly in the future
+  var now = Date.now();
   var upcoming = scheduleRows
     .filter(function (r) { return new Date(r.at_time).getTime() > now; })
     .sort(function (a, b) { return new Date(a.at_time) - new Date(b.at_time); })[0];
-
-  if (upcoming) {
-    var remaining = new Date(upcoming.at_time).getTime() - now;
-    countdownEl.innerHTML = escapeHtml(upcoming.label) + " in <strong>" + fmtDuration(remaining) + "</strong>";
-  } else {
-    countdownEl.textContent = "";
-  }
+  if (upcoming) return { at: new Date(upcoming.at_time), label: "until " + (upcoming.label || "the next release") };
+  var close = scheduleRows.filter(function (r) { return r.phase === "CLOSE"; })[0];
+  if (close) return { at: new Date(close.at_time), label: (typeof COUNTDOWN_LABEL === "string" ? COUNTDOWN_LABEL : "") };
+  return null;
 }
 
-// ---------------------------------------------------------------------------
-// judge terminal ticker
-// ---------------------------------------------------------------------------
+function renderCountdown() {
+  var tgt = countdownTarget();
+  var cap = document.getElementById("cdCaption");
+  var grid = document.getElementById("countdown");
+  if (!tgt) { cap.textContent = "schedule to be announced"; return; }
 
-var tickerLines = ["awaiting first announcement…"];
-var tickerIdx = 0;
-var tickerTimer = null;
-
-function setTickerLines(lines) {
-  tickerLines = lines.length ? lines : ["awaiting first announcement…"];
-  tickerIdx = 0;
-  typeTickerLine();
-}
-
-function typeTickerLine() {
-  clearTimeout(tickerTimer);
-  var el = document.getElementById("tickerText");
-  var line = tickerLines[tickerIdx % tickerLines.length];
-
-  if (prefersReducedMotion) {
-    el.textContent = "> " + line;
-    tickerTimer = setTimeout(function () {
-      tickerIdx++;
-      typeTickerLine();
-    }, 4500);
+  var diff = tgt.at.getTime() - Date.now();
+  if (diff <= 0) {
+    grid.innerHTML = '<div class="cd-done">— the clock has run out —</div>';
+    cap.textContent = tgt.label || "";
     return;
   }
-
-  var full = "> " + line;
-  var i = 0;
-  el.textContent = "";
-
-  function typeChar() {
-    if (i <= full.length) {
-      el.textContent = full.slice(0, i);
-      i++;
-      tickerTimer = setTimeout(typeChar, 18);
-    } else {
-      tickerTimer = setTimeout(function () {
-        tickerIdx++;
-        typeTickerLine();
-      }, 3200);
-    }
-  }
-  typeChar();
+  var s = Math.floor(diff / 1000);
+  var d = Math.floor(s / 86400); s -= d * 86400;
+  var h = Math.floor(s / 3600);  s -= h * 3600;
+  var m = Math.floor(s / 60);    s -= m * 60;
+  var days = document.getElementById("cdDays");
+  if (!days) return; // grid was replaced by the done-state
+  days.textContent = pad(d);
+  document.getElementById("cdHours").textContent = pad(h);
+  document.getElementById("cdMins").textContent = pad(m);
+  document.getElementById("cdSecs").textContent = pad(s);
+  cap.textContent = tgt.label || "";
 }
 
 // ---------------------------------------------------------------------------
-// leaderboard
+// users map (for frozen snapshots + graph handles)
 // ---------------------------------------------------------------------------
+function ensureUsersMap() {
+  if (usersMap) return Promise.resolve(usersMap);
+  return supabase.from("users").select("id, cf_handle, display_name").then(function (resp) {
+    usersMap = {};
+    (resp.data || []).forEach(function (u) { usersMap[u.id] = u; });
+    return usersMap;
+  }).catch(function () { usersMap = {}; return usersMap; });
+}
 
-function renderLeaderboardRows(rows) {
-  var tbody = document.getElementById("tblBody");
-
+// ---------------------------------------------------------------------------
+// leaderboard (feature 3, §6.2) — live view or frozen snapshot
+// ---------------------------------------------------------------------------
+function renderLeaderboard(rows) {
+  var body = document.getElementById("lbBody");
   if (!rows.length) {
-    tbody.innerHTML = '<tr class="state-row"><td colspan="4">no solves yet — plenty of time to be first.</td></tr>';
+    body.innerHTML = '<tr class="state-row"><td colspan="4">No solves yet — plenty of clock left to be first.</td></tr>';
     return;
   }
-
   var html = "";
   rows.forEach(function (r, i) {
     var rank = i + 1;
-    var chipClass = rank === 1 ? " r1" : rank === 2 ? " r2" : rank === 3 ? " r3" : "";
-    var displayName = r.display_name && r.display_name !== r.cf_handle
-      ? '<span class="display-name">' + escapeHtml(r.display_name) + "</span>"
-      : "";
+    var rcls = rank <= 3 ? " r" + rank : "";
+    var top3 = rank <= 3 ? " top3" : "";
+    if (rank === 3) top3 += " top3-last";
+    var seal = rank === 1 ? '<span class="seal">✦</span>' : "";
+    var disp = r.display_name && r.display_name !== r.cf_handle
+      ? '<span class="disp">' + escapeHtml(r.display_name) + "</span>" : "";
     var score = Number(r.total_score);
-    var scoreDisplay = score % 1 === 0 ? score.toFixed(0) : score.toFixed(1);
-
-    html += "<tr>"
-      + '<td class="num"><span class="rank-chip' + chipClass + '">' + rank + "</span></td>"
-      + "<td><span class=\"handle\">" + escapeHtml(r.cf_handle) + "</span>" + displayName + "</td>"
-      + '<td class="num score">' + scoreDisplay + "</td>"
-      + '<td class="num solved-count">' + r.problems_solved + "</td>"
+    var scoreTxt = Math.round(score);        // §4.4: integer at display time
+    var changed = prevScores[r.user_id] !== undefined && prevScores[r.user_id] !== score;
+    var flash = changed && !reduceMotion ? " flash" : "";
+    prevScores[r.user_id] = score;
+    html += '<tr class="' + rcls + top3 + flash + '">'
+      + '<td class="n"><span class="rank">' + rank + "</span></td>"
+      + '<td><span class="handle">' + escapeHtml(r.cf_handle) + "</span>" + seal + disp + "</td>"
+      + '<td class="n">' + (r.problems_solved != null ? r.problems_solved : 0) + "</td>"
+      + '<td class="n score">' + scoreTxt + "</td>"
       + "</tr>";
   });
-  tbody.innerHTML = html;
+  body.innerHTML = html;
 }
 
-function loadLeaderboard() {
+function loadLiveLeaderboard() {
   var btn = document.getElementById("btnRefresh");
   btn.disabled = true;
-
-  return supabase
-    .from("leaderboard")
+  return supabase.from("leaderboard")
     .select("user_id, cf_handle, display_name, total_score, problems_solved, total_wrong, last_ac_seconds")
-    // §4.4 ranking: score desc, total wrong asc, last scoring submission asc.
     .order("total_score", { ascending: false })
     .order("total_wrong", { ascending: true })
     .order("last_ac_seconds", { ascending: true, nullsFirst: false })
     .then(function (resp) {
       btn.disabled = false;
       if (resp.error) {
-        document.getElementById("tblBody").innerHTML =
-          '<tr class="state-row error"><td colspan="4">⚠ ' + escapeHtml(resp.error.message || "couldn't load standings") + "</td></tr>";
+        document.getElementById("lbBody").innerHTML =
+          '<tr class="state-row err"><td colspan="4">Couldn’t load standings: ' + escapeHtml(resp.error.message || "unknown error") + "</td></tr>";
         return [];
       }
       var rows = resp.data || [];
-      renderLeaderboardRows(rows);
-      document.getElementById("lastUpdated").textContent = "updated " + fmtClockTime(new Date());
+      renderLeaderboard(rows);
+      document.getElementById("lastUpdated").textContent = "updated " + fmtClock(new Date());
       return rows;
     })
     .catch(function (err) {
       btn.disabled = false;
-      document.getElementById("tblBody").innerHTML =
-        '<tr class="state-row error"><td colspan="4">⚠ ' + escapeHtml(err.message || "network error") + "</td></tr>";
+      document.getElementById("lbBody").innerHTML =
+        '<tr class="state-row err"><td colspan="4">Network error — retrying shortly.</td></tr>';
       return [];
     });
 }
 
-// ---------------------------------------------------------------------------
-// rank-over-time graph (hand-drawn SVG, no chart lib)
-// ---------------------------------------------------------------------------
-
-var RANK_COLORS = ["#3ddc84", "#f5a623", "#b8794f", "#5b8fd8", "#c26bd8", "#4fb8c9", "#d87e4f", "#8fbf4f"];
-
-function renderRankGraph(snapshots, currentHandles) {
-  var container = document.getElementById("rankGraph");
-  var legend = document.getElementById("rankLegend");
-
-  if (!snapshots.length) {
-    container.innerHTML = '<p class="empty-note">history starts recording once the fetcher has run a few times.</p>';
-    legend.innerHTML = "";
-    return;
-  }
-
-  // group by user
-  var byUser = {};
-  snapshots.forEach(function (s) {
-    if (!byUser[s.user_id]) byUser[s.user_id] = [];
-    byUser[s.user_id].push(s);
-  });
-
-  // pick top 8 by most recent rank
-  var users = Object.keys(byUser).map(function (uid) {
-    var pts = byUser[uid].sort(function (a, b) { return new Date(a.taken_at) - new Date(b.taken_at); });
-    var handle = currentHandles[uid] || "?";
-    return { uid: uid, points: pts, handle: handle, latestRank: pts[pts.length - 1].rank };
-  }).sort(function (a, b) { return a.latestRank - b.latestRank; }).slice(0, 8);
-
-  var allTimes = snapshots.map(function (s) { return new Date(s.taken_at).getTime(); });
-  var minT = Math.min.apply(null, allTimes);
-  var maxT = Math.max.apply(null, allTimes);
-  var maxRank = Math.max.apply(null, snapshots.map(function (s) { return s.rank; }), 8);
-
-  var W = 560, H = 220, padL = 26, padR = 10, padT = 10, padB = 20;
-  var plotW = W - padL - padR, plotH = H - padT - padB;
-
-  function x(t) { return maxT === minT ? padL : padL + ((t - minT) / (maxT - minT)) * plotW; }
-  function y(rank) { return padT + ((rank - 1) / Math.max(1, maxRank - 1)) * plotH; }
-
-  var svg = '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Rank over time">';
-
-  // gridlines
-  [1, Math.ceil(maxRank / 2), maxRank].forEach(function (r) {
-    var gy = y(r);
-    svg += '<line class="grid-line" x1="' + padL + '" y1="' + gy + '" x2="' + (W - padR) + '" y2="' + gy + '" />';
-    svg += '<text class="axis-label" x="2" y="' + (gy + 3) + '">#' + r + "</text>";
-  });
-
-  // time axis labels (start/end)
-  svg += '<text class="axis-label" x="' + padL + '" y="' + (H - 4) + '">' + fmtClockTime(new Date(minT)) + "</text>";
-  svg += '<text class="axis-label" x="' + (W - padR - 34) + '" y="' + (H - 4) + '">' + fmtClockTime(new Date(maxT)) + "</text>";
-
-  // lines
-  users.forEach(function (u, idx) {
-    var color = RANK_COLORS[idx % RANK_COLORS.length];
-    var pts = u.points.map(function (p) {
-      return x(new Date(p.taken_at).getTime()) + "," + y(p.rank);
-    }).join(" ");
-    svg += '<polyline class="rank-line" points="' + pts + '" stroke="' + color + '" opacity="' + (idx === 0 ? 1 : 0.75) + '" />';
-    var last = u.points[u.points.length - 1];
-    svg += '<circle class="rank-dot" cx="' + x(new Date(last.taken_at).getTime()) + '" cy="' + y(last.rank) + '" r="3" fill="' + color + '" />';
-  });
-
-  svg += "</svg>";
-  container.innerHTML = svg;
-
-  legend.innerHTML = users.map(function (u, idx) {
-    var color = RANK_COLORS[idx % RANK_COLORS.length];
-    return '<li><span class="swatch" style="background:' + color + '"></span>' + escapeHtml(u.handle) + " · #" + u.latestRank + "</li>";
-  }).join("");
-}
-
-function loadRankHistory(currentRows, untilIso) {
-  var currentHandles = {};
-  (currentRows || []).forEach(function (r) { currentHandles[r.user_id] = r.cf_handle; });
-
-  var sinceIso = new Date(Date.now() - 30 * 3600 * 1000).toISOString();
-
-  var query = supabase
-    .from("leaderboard_snapshots")
-    .select("user_id, rank, total_score, taken_at")
-    .gte("taken_at", sinceIso);
-  // During the freeze, cap history at the freeze time so the graph doesn't
-  // leak post-freeze rank movement (§4.5).
-  if (untilIso) query = query.lte("taken_at", untilIso);
-
-  return query
-    .order("taken_at", { ascending: true })
-    .then(function (resp) {
-      if (resp.error) {
-        document.getElementById("rankGraph").innerHTML =
-          '<p class="empty-note">rank history isn’t available yet.</p>';
-        return;
-      }
-      renderRankGraph(resp.data || [], currentHandles);
-    })
-    .catch(function () {
-      document.getElementById("rankGraph").innerHTML = '<p class="empty-note">rank history isn’t available yet.</p>';
-    });
-}
-
-// ---------------------------------------------------------------------------
-// predictions ("the bookie's table")
-// ---------------------------------------------------------------------------
-
-function renderPredictions(rows) {
-  var container = document.getElementById("predictionsList");
-  if (!rows.length) {
-    container.innerHTML = '<p class="empty-note">the board opens once organizers post the first line.</p>';
-    return;
-  }
-
-  container.innerHTML = rows.map(function (p) {
-    var options = Array.isArray(p.options) ? p.options : [];
-    var total = options.reduce(function (sum, o) { return sum + (Number(o.votes) || 0); }, 0);
-
-    var optionsHtml = options.map(function (o) {
-      var pct = total > 0 ? Math.round(((Number(o.votes) || 0) / total) * 100) : 0;
-      return '<div class="prediction-option">'
-        + '<div class="prediction-option-row"><span>' + escapeHtml(o.label) + '</span><span>' + pct + '%</span></div>'
-        + '<div class="prediction-bar-track"><div class="prediction-bar-fill" style="width:' + pct + '%"></div></div>'
-        + "</div>";
-    }).join("");
-
-    return '<div class="prediction' + (p.closed ? " is-closed" : "") + '">'
-      + '<p class="prediction-q">' + escapeHtml(p.question) + "</p>"
-      + optionsHtml
-      + "</div>";
-  }).join("");
-}
-
-function loadPredictions() {
-  return supabase
-    .from("predictions")
-    .select("id, question, options, closed, sort_order")
-    .order("sort_order", { ascending: true })
-    .then(function (resp) {
-      if (resp.error) return;
-      renderPredictions(resp.data || []);
-    })
-    .catch(function () {});
-}
-
-// ---------------------------------------------------------------------------
-// announcements
-// ---------------------------------------------------------------------------
-
-function renderAnnouncements(rows) {
-  var list = document.getElementById("announcementsList");
-  if (!rows.length) {
-    list.innerHTML = '<li class="empty-note">nothing posted yet — check back once the briefing starts.</li>';
-    return;
-  }
-  list.innerHTML = rows.map(function (a) {
-    return '<li class="announcement' + (a.pinned ? " is-pinned" : "") + '">'
-      + '<span class="announcement-time">' + fmtRelativeShort(new Date(a.created_at)) + "</span>"
-      + '<span class="announcement-body">' + escapeHtml(a.body) + "</span>"
-      + "</li>";
-  }).join("");
-}
-
-function loadAnnouncements() {
-  return supabase
-    .from("announcements")
-    .select("id, body, pinned, created_at")
-    .order("pinned", { ascending: false })
-    .order("created_at", { ascending: false })
-    .then(function (resp) {
-      if (resp.error) return;
-      var rows = resp.data || [];
-      renderAnnouncements(rows);
-
-      var pinned = rows.filter(function (r) { return r.pinned; }).map(function (r) { return r.body; });
-      var rest = rows.filter(function (r) { return !r.pinned; }).map(function (r) { return r.body; });
-      setTickerLines(pinned.concat(rest));
-    })
-    .catch(function () {});
-}
-
-// ---------------------------------------------------------------------------
-// schedule
-// ---------------------------------------------------------------------------
-
-function loadSchedule() {
-  return supabase
-    .from("contest_schedule")
-    .select("phase, label, at_time")
-    .then(function (resp) {
-      if (resp.error) return;
-      scheduleRows = resp.data || [];
-      renderPhase();
-    })
-    .catch(function () {});
-}
-
-// ---------------------------------------------------------------------------
-// users map (for rendering frozen snapshots, which store only user_id)
-// ---------------------------------------------------------------------------
-
-function ensureUsersMap() {
-  if (usersMap) return Promise.resolve(usersMap);
-  return supabase
-    .from("users")
-    .select("id, cf_handle, display_name")
-    .then(function (resp) {
-      usersMap = {};
-      (resp.data || []).forEach(function (u) { usersMap[u.id] = u; });
-      return usersMap;
-    })
-    .catch(function () { usersMap = {}; return usersMap; });
-}
-
-// ---------------------------------------------------------------------------
-// problems catalog — problem index (§3.3) + board columns (§5.4)
-// ---------------------------------------------------------------------------
-
-function loadProblems() {
-  return supabase
-    .from("problems")
-    .select("contest_id, problem_index, problem_set, slot, title, theme, link, learn_more")
-    .order("problem_set", { ascending: true })
-    .order("slot", { ascending: true })
-    .then(function (resp) {
-      if (resp.error) { renderProblemIndex([]); return; }
-      var rows = resp.data || [];
-      // The board renders one contest; pick the one with the most problems.
-      var counts = {};
-      rows.forEach(function (r) { counts[r.contest_id] = (counts[r.contest_id] || 0) + 1; });
-      gridContestId = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; })[0] || null;
-      problemsCatalog = rows.filter(function (r) { return r.contest_id === gridContestId; });
-      renderProblemIndex(problemsCatalog);
-    })
-    .catch(function () { renderProblemIndex([]); });
-}
-
-function renderProblemIndex(rows) {
-  var el = document.getElementById("problemsIndex");
-  if (!rows.length) {
-    el.innerHTML = '<p class="empty-note">the problem index appears once organizers seed the catalog.</p>';
-    return;
-  }
-  el.innerHTML = rows.map(function (p) {
-    var learn = Array.isArray(p.learn_more) ? p.learn_more : [];
-    var links = "";
-    if (p.link) links += '<a href="' + escapeHtml(p.link) + '" target="_blank" rel="noopener">statement</a>';
-    learn.forEach(function (l) {
-      if (l && l.url) links += '<a class="learn" href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener">' + escapeHtml(l.label || "Learn More") + "</a>";
-    });
-    var setC = (p.problem_set || "").toUpperCase();
-    return '<div class="prob-card">'
-      + '<div class="prob-card-head">'
-      +   '<span class="set-badge set-' + escapeHtml(setC) + '">' + escapeHtml(setC) + (p.slot != null ? p.slot : "") + "</span>"
-      +   '<span class="prob-slot">' + escapeHtml(p.problem_index) + "</span>"
-      + "</div>"
-      + '<div class="prob-title">' + escapeHtml(p.title || p.problem_index) + "</div>"
-      + (p.theme ? '<div class="prob-theme">' + escapeHtml(p.theme) + "</div>" : "")
-      + '<div class="prob-links">' + (links || '<span class="prob-slot">links TBA</span>') + "</div>"
-      + "</div>";
-  }).join("");
-}
-
-// ---------------------------------------------------------------------------
-// per-problem board (§5.4)
-// ---------------------------------------------------------------------------
-
-function renderBoardFrozen() {
-  document.getElementById("boardHead").innerHTML = "";
-  document.getElementById("boardBody").innerHTML =
-    '<tr><td class="board-frozen-note">❄ the per-problem board is frozen — the full grid returns at the reveal.</td></tr>';
-}
-
-function renderBoardHead(cols) {
-  var head = document.getElementById("boardHead");
-  if (!cols.length) { head.innerHTML = ""; return; }
-  var groups = [];
-  cols.forEach(function (c) {
-    var s = (c.problem_set || "?").toUpperCase();
-    if (groups.length && groups[groups.length - 1].set === s) groups[groups.length - 1].n++;
-    else groups.push({ set: s, n: 1 });
-  });
-  var row1 = '<tr><th class="sticky-col" rowspan="2">participant</th>';
-  groups.forEach(function (g) { row1 += '<th class="setgroup" colspan="' + g.n + '">Set ' + escapeHtml(g.set) + "</th>"; });
-  row1 += "</tr>";
-  var row2 = "<tr>";
-  cols.forEach(function (c) { row2 += '<th title="' + escapeHtml(c.title || "") + '">' + escapeHtml(c.problem_index) + "</th>"; });
-  row2 += "</tr>";
-  head.innerHTML = row1 + row2;
-}
-
-function renderBoard(leaderboardRows, resultMap) {
-  var cols = problemsCatalog;
-  var body = document.getElementById("boardBody");
-  if (!cols.length) {
-    document.getElementById("boardHead").innerHTML = "";
-    body.innerHTML = '<tr><td class="board-frozen-note">no problems catalogued yet.</td></tr>';
-    return;
-  }
-  renderBoardHead(cols);
-  if (!leaderboardRows.length) {
-    body.innerHTML = '<tr><td class="board-frozen-note">no participants yet.</td></tr>';
-    return;
-  }
-
-  var html = "";
-  leaderboardRows.forEach(function (r, i) {
-    html += '<tr><td class="sticky-col"><span class="board-rank">' + (i + 1) + "</span>" + escapeHtml(r.cf_handle) + "</td>";
-    var byIndex = resultMap[r.user_id] || {};
-    cols.forEach(function (c) {
-      var cell = byIndex[c.problem_index];
-      var cls = "c-none", txt = "·";
-      if (cell) {
-        if (cell.solved && cell.solve_rank === 1) { cls = "c-first"; txt = ""; }
-        else if (cell.solved) { cls = "c-solved"; txt = "✓"; }
-        else if ((cell.wrong_submissions || 0) > 0) { cls = "c-attempted"; txt = "×"; }
-      }
-      html += '<td><span class="cell ' + cls + '">' + txt + "</span></td>";
-    });
-    html += "</tr>";
-  });
-  body.innerHTML = html;
-}
-
-function loadProblemGrid(leaderboardRows) {
-  if (!gridContestId) { renderBoard(leaderboardRows || [], {}); return Promise.resolve(); }
-  return supabase
-    .from("problem_results")
-    .select("user_id, problem_index, solved, wrong_submissions, solve_rank")
-    .eq("contest_id", gridContestId)
-    .then(function (resp) {
-      var map = {};
-      (resp.data || []).forEach(function (pr) {
-        if (!map[pr.user_id]) map[pr.user_id] = {};
-        map[pr.user_id][pr.problem_index] = pr;
-      });
-      renderBoard(leaderboardRows || [], map);
-    })
-    .catch(function () { renderBoard(leaderboardRows || [], {}); });
-}
-
-// ---------------------------------------------------------------------------
-// frozen standings (§4.5) — drawn from the snapshot taken at T+23h
-// ---------------------------------------------------------------------------
-
-function loadFrozenStandings() {
+function loadFrozenLeaderboard() {
   var p = contestPhase();
-  if (!p.freezeAt) return loadLeaderboard();
-
+  if (!p.freezeAt) return loadLiveLeaderboard();
   var freezeIso = p.freezeAt.toISOString();
   return ensureUsersMap().then(function () {
-    return supabase
-      .from("leaderboard_snapshots")
-      .select("taken_at")
-      .lte("taken_at", freezeIso)
-      .order("taken_at", { ascending: false })
-      .limit(1)
+    return supabase.from("leaderboard_snapshots").select("taken_at")
+      .lte("taken_at", freezeIso).order("taken_at", { ascending: false }).limit(1)
       .then(function (resp) {
         var rows = resp.data || [];
         if (!rows.length) {
-          document.getElementById("tblBody").innerHTML =
-            '<tr class="state-row"><td colspan="4">board frozen — the pre-freeze snapshot will appear shortly.</td></tr>';
+          document.getElementById("lbBody").innerHTML =
+            '<tr class="state-row"><td colspan="4">Board frozen — the pre-freeze snapshot appears here shortly.</td></tr>';
           document.getElementById("lastUpdated").textContent = "frozen";
           return [];
         }
         var t = rows[0].taken_at;
-        return supabase
-          .from("leaderboard_snapshots")
+        return supabase.from("leaderboard_snapshots")
           .select("user_id, rank, total_score, problems_solved")
-          .eq("taken_at", t)
-          .order("rank", { ascending: true })
+          .eq("taken_at", t).order("rank", { ascending: true })
           .then(function (r2) {
             var snap = (r2.data || []).map(function (s) {
               var u = (usersMap && usersMap[s.user_id]) || {};
-              return {
-                user_id: s.user_id,
-                cf_handle: u.cf_handle || "?",
-                display_name: u.display_name,
-                total_score: s.total_score,
-                problems_solved: s.problems_solved
-              };
+              return { user_id: s.user_id, cf_handle: u.cf_handle || "?", display_name: u.display_name,
+                       total_score: s.total_score, problems_solved: s.problems_solved };
             });
-            renderLeaderboardRows(snap);
+            renderLeaderboard(snap);
             document.getElementById("lastUpdated").textContent = "frozen at T+23h";
             return snap;
           });
@@ -1433,39 +850,224 @@ function loadFrozenStandings() {
 }
 
 // ---------------------------------------------------------------------------
+// top-5 movement graph (feature 4)
+// ---------------------------------------------------------------------------
+var GRAPH_COLORS = ["#987654", "#0A0A0A", "#3C7A4E", "#B07B2C", "#6B675E"];
+
+function renderGraph(snapshots, handles) {
+  var box = document.getElementById("graph");
+  var legend = document.getElementById("graphLegend");
+  if (!snapshots.length) {
+    box.innerHTML = '<p class="empty">History starts drawing once the judge has polled a few times.</p>';
+    legend.innerHTML = "";
+    return;
+  }
+  var byUser = {};
+  snapshots.forEach(function (s) { (byUser[s.user_id] = byUser[s.user_id] || []).push(s); });
+
+  var users = Object.keys(byUser).map(function (uid) {
+    var pts = byUser[uid].sort(function (a, b) { return new Date(a.taken_at) - new Date(b.taken_at); });
+    return { uid: uid, pts: pts, handle: (handles[uid] || "?"), latest: pts[pts.length - 1].rank };
+  }).sort(function (a, b) { return a.latest - b.latest; }).slice(0, 5);
+
+  var times = snapshots.map(function (s) { return new Date(s.taken_at).getTime(); });
+  var minT = Math.min.apply(null, times), maxT = Math.max.apply(null, times);
+  var maxRank = Math.max(5, Math.max.apply(null, snapshots.map(function (s) { return s.rank; })));
+
+  var W = 640, H = 260, padL = 34, padR = 12, padT = 12, padB = 26;
+  var plotW = W - padL - padR, plotH = H - padT - padB;
+  function x(t) { return maxT === minT ? padL + plotW : padL + ((t - minT) / (maxT - minT)) * plotW; }
+  function y(r) { return padT + ((r - 1) / Math.max(1, maxRank - 1)) * plotH; }
+
+  var svg = '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Top five rank over time">';
+  [1, Math.ceil(maxRank / 2), maxRank].forEach(function (r) {
+    var gy = y(r);
+    svg += '<line class="graph-grid" x1="' + padL + '" y1="' + gy + '" x2="' + (W - padR) + '" y2="' + gy + '" />';
+    svg += '<text class="graph-axis" x="4" y="' + (gy + 3) + '">#' + r + "</text>";
+  });
+  svg += '<text class="graph-axis" x="' + padL + '" y="' + (H - 6) + '">' + fmtClock(new Date(minT)) + "</text>";
+  svg += '<text class="graph-axis" x="' + (W - padR - 40) + '" y="' + (H - 6) + '">' + fmtClock(new Date(maxT)) + "</text>";
+
+  users.forEach(function (u, idx) {
+    var color = GRAPH_COLORS[idx % GRAPH_COLORS.length];
+    var pts = u.pts.map(function (p) { return x(new Date(p.taken_at).getTime()) + "," + y(p.rank); }).join(" ");
+    svg += '<polyline class="graph-line" points="' + pts + '" stroke="' + color + '" />';
+    var last = u.pts[u.pts.length - 1];
+    svg += '<circle class="graph-dot" cx="' + x(new Date(last.taken_at).getTime()) + '" cy="' + y(last.rank) + '" r="3.5" fill="' + color + '" />';
+  });
+  svg += "</svg>";
+  box.innerHTML = svg;
+
+  legend.innerHTML = users.map(function (u, idx) {
+    return '<li><span class="sw" style="background:' + GRAPH_COLORS[idx % GRAPH_COLORS.length] + '"></span>'
+      + escapeHtml(u.handle) + " · #" + u.latest + "</li>";
+  }).join("");
+}
+
+function loadGraph(currentRows, untilIso) {
+  var handles = {};
+  (currentRows || []).forEach(function (r) { handles[r.user_id] = r.cf_handle; });
+  var sinceIso = new Date(Date.now() - 30 * 3600 * 1000).toISOString();
+  var q = supabase.from("leaderboard_snapshots").select("user_id, rank, taken_at").gte("taken_at", sinceIso);
+  if (untilIso) q = q.lte("taken_at", untilIso);
+  return q.order("taken_at", { ascending: true }).then(function (resp) {
+    if (resp.error) { return; }
+    renderGraph(resp.data || [], handles);
+  }).catch(function () {});
+}
+
+// ---------------------------------------------------------------------------
+// hidden-challenge circles (feature 5)
+// ---------------------------------------------------------------------------
+function renderCircles(rows) {
+  var el = document.getElementById("circles");
+  var meta = document.getElementById("circlesMeta");
+  if (!rows.length) {
+    el.innerHTML = '<p class="empty">The side-quest board wakes up once the first secret is planted.</p>';
+    meta.textContent = "";
+    return;
+  }
+  var lit = 0;
+  el.innerHTML = rows.map(function (c, i) {
+    if (c.lit) lit++;
+    var num = i + 1;
+    var title = c.lit
+      ? escapeHtml(c.label) + (c.solved_by ? " — cracked by " + escapeHtml(c.solved_by) : " — solved")
+      : escapeHtml(c.hint || "still hidden");
+    return '<div class="circle-item">'
+      + '<div class="circle ' + (c.lit ? "lit" : "") + '" title="' + title + '">' + (c.lit ? "✦" : num) + "</div>"
+      + '<div class="circle-label">' + (c.lit ? escapeHtml(c.label) : "???") + "</div>"
+      + "</div>";
+  }).join("");
+  meta.textContent = lit + " of " + rows.length + " secrets found";
+}
+
+function loadCircles() {
+  return supabase.from("hidden_challenges")
+    .select("id, label, hint, lit, solved_by, sort_order")
+    .order("sort_order", { ascending: true })
+    .then(function (resp) {
+      if (resp.error) { renderCircles([]); return; }
+      renderCircles(resp.data || []);
+    }).catch(function () { renderCircles([]); });
+}
+
+// ---------------------------------------------------------------------------
+// announcements + ticker (§6.3)
+// ---------------------------------------------------------------------------
+function renderFeed(rows) {
+  var feed = document.getElementById("feed");
+  if (!rows.length) {
+    feed.innerHTML = '<p class="empty">Nothing on the wire yet. Check back once the briefing starts.</p>';
+    return;
+  }
+  feed.innerHTML = rows.map(function (a) {
+    var kicker = a.pinned ? "Pinned" : "Update";
+    return '<article class="article' + (a.pinned ? " pinned" : "") + '">'
+      + '<div class="article-meta"><span class="kicker">' + kicker + "</span>"
+      + '<span class="article-time">' + fmtRelative(new Date(a.created_at)) + "</span></div>"
+      + "<h3>" + escapeHtml(a.body) + "</h3>"
+      + "</article>";
+  }).join("");
+}
+
+function loadAnnouncements() {
+  return supabase.from("announcements").select("id, body, pinned, created_at")
+    .order("pinned", { ascending: false }).order("created_at", { ascending: false })
+    .then(function (resp) {
+      if (resp.error) return;
+      var rows = resp.data || [];
+      renderFeed(rows);
+      var lines = rows.map(function (r) { return r.body; });
+      var move = document.getElementById("tickerMove");
+      move.textContent = lines.length
+        ? lines.join("      ·      ")
+        : "Standings load live from the judge — announcements will scroll here.";
+    }).catch(function () {});
+}
+
+// ---------------------------------------------------------------------------
+// schedule + resources
+// ---------------------------------------------------------------------------
+function loadSchedule() {
+  return supabase.from("contest_schedule").select("phase, label, at_time")
+    .then(function (resp) {
+      if (resp.error) return;
+      scheduleRows = resp.data || [];
+      renderStatus();
+      renderCountdown();
+    }).catch(function () {});
+}
+
+function renderResources() {
+  document.getElementById("resGrid").innerHTML = RESOURCES.map(function (r) {
+    return '<div class="res-card">'
+      + '<span class="kicker">' + escapeHtml(r.kicker) + "</span>"
+      + "<h3>" + escapeHtml(r.title) + "</h3>"
+      + "<p>" + escapeHtml(r.desc) + "</p>"
+      + '<a href="' + escapeHtml(r.url) + '"' + (r.url.indexOf("http") === 0 ? ' target="_blank" rel="noopener"' : "") + ">" + escapeHtml(r.label) + "</a>"
+      + "</div>";
+  }).join("");
+}
+
+// ---------------------------------------------------------------------------
+// reveal-on-enter (§7)
+// ---------------------------------------------------------------------------
+function runReveal() {
+  if (reduceMotion) return;
+  var els = document.querySelectorAll(".tab.active .reveal:not(.in)");
+  els.forEach(function (el, i) { setTimeout(function () { el.classList.add("in"); }, i * 60); });
+}
+
+// ---------------------------------------------------------------------------
 // orchestration
 // ---------------------------------------------------------------------------
-
-// One entry point for standings + board + rank graph, honouring the freeze.
 function refreshStandings() {
   var p = contestPhase();
   if (p.frozen) {
-    renderBoardFrozen();
-    return loadFrozenStandings().then(function (rows) {
-      loadRankHistory(rows, p.freezeAt.toISOString());
+    return loadFrozenLeaderboard().then(function (rows) {
+      loadGraph(rows, p.freezeAt.toISOString());
       return rows;
     });
   }
-  return loadLeaderboard().then(function (rows) {
-    loadRankHistory(rows);
-    loadProblemGrid(rows);
+  return loadLiveLeaderboard().then(function (rows) {
+    loadGraph(rows);
     return rows;
   });
 }
 
 document.getElementById("btnRefresh").addEventListener("click", refreshStandings);
 
+// dateline
+(function () {
+  var line = fmtDateLine(new Date());
+  document.getElementById("mastheadDate").textContent = line;
+  document.getElementById("footerDate").textContent = line;
+})();
+
+// nav shadow on scroll
+window.addEventListener("scroll", function () {
+  document.getElementById("nav").classList.toggle("scrolled", window.scrollY > 8);
+}, { passive: true });
+
 function boot() {
+  // deep-link to a tab if present
+  var hash = (location.hash || "").replace("#tab-", "");
+  if (hash && document.getElementById("tab-" + hash)) showTab(hash);
+
+  renderResources();
   loadSchedule();
   loadAnnouncements();
-  loadPredictions();
-  loadProblems();
+  loadCircles();
   refreshStandings();
 }
 
 boot();
-setInterval(renderPhase, 1000);
+setInterval(renderCountdown, 1000);
+setInterval(function () { renderStatus(); }, 5000);
 setInterval(refreshStandings, 45000);
+setInterval(loadCircles, 60000);
+setInterval(loadAnnouncements, 60000);
 </script>
 
 </body>

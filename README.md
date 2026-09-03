@@ -34,6 +34,7 @@ cf-leaderboard/
    7. `supabase/007_problems.sql`
    8. `supabase/008_leaderboard_tiebreakers.sql`
    9. `supabase/009_snapshot_solved_reveal.sql`
+   10. `supabase/010_hidden_challenges.sql`
 
    **Option B — psql (if you have the DB password)**
    ```bash
@@ -41,7 +42,8 @@ cf-leaderboard/
             supabase/004_fetch_log_source.sql supabase/005_submissions.sql \
             supabase/006_engagement.sql supabase/007_problems.sql \
             supabase/008_leaderboard_tiebreakers.sql \
-            supabase/009_snapshot_solved_reveal.sql; do
+            supabase/009_snapshot_solved_reveal.sql \
+            supabase/010_hidden_challenges.sql; do
      psql "postgresql://postgres:<db-password>@db.wrdwuzmjzcscolhjejtk.supabase.co:5432/postgres" -f "$f"
    done
    ```
@@ -255,6 +257,30 @@ insert into predictions (question, options, sort_order) values
 Rank-over-time history needs no manual seeding — `fetcher/main.py` writes a
 `leaderboard_snapshots` row per user on every run automatically, once
 `006_engagement.sql` has been applied.
+
+### Frontend site (newspaper design + tabs)
+
+`frontend/index.html` is a tabbed, single-file site built to the editorial
+"paper & ink" spec in `../design.md` (Leaderboard · Announcements · Info ·
+Rules · Resources). Beyond the live leaderboard it has:
+
+- **Countdown hero** — set the target in `frontend/config.js`:
+  `var COUNTDOWN_TARGET = "2026-09-02T10:00:00+05:30";` (with `COUNTDOWN_LABEL`).
+  Leave it `null` to fall back to `contest_schedule` (next upcoming phase, else
+  `CLOSE`).
+- **Top-5 movement graph** — the front-of-pack view of `leaderboard_snapshots`.
+- **Hidden-challenge circles** — seed `hidden_challenges` (010), then flip `lit`
+  by hand when a secret is cracked:
+
+  ```sql
+  insert into hidden_challenges (label, hint, sort_order) values
+    ('Inspect Element', 'the source hides a door', 1),
+    ('Assembled URL',   'outputs are fragments',   2);
+  update hidden_challenges set lit = true, solved_by = 'qwertyduh', lit_at = now()
+    where label = 'Inspect Element';
+  ```
+- **Resources tab** — edit the `RESOURCES` array near the top of the inline
+  script in `index.html`.
 
 ### Running the test suite
 
