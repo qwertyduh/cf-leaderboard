@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The First AC — Njack Orientation Contest</title>
+<title>./a.out</title>
 <meta name="description" content="Live standings, announcements, and side quests for Njack's 24-hour freshman orientation programming contest.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -334,10 +334,7 @@ a:hover { color: var(--accent); }
 .btn-outline:hover { background: var(--paper-sunk); color: var(--ink); }
 
 /* seal / stamp (§5) */
-.seal { width: 108px; height: 108px; }
-.seal text { font-family: var(--font-mono); font-size: 7.4px; letter-spacing: 2px; fill: var(--accent); text-transform: uppercase; }
-.seal .ring { fill: none; stroke: var(--accent); stroke-width: 1.5; }
-.seal .core { font-family: var(--font-display); font-size: 15px; fill: var(--ink); letter-spacing: 0; }
+.seal { width: 108px; height: 108px; object-fit: contain; }
 
 /* ==========================================================================
    resources (feature 2)
@@ -380,17 +377,17 @@ a:hover { color: var(--accent); }
 <!-- ═══ masthead (§5) ═══ -->
 <header class="masthead wrap">
   <div class="masthead-top">
-    <span>NIT · Campus Edition</span>
+    <span>IIT Patna</span>
     <span class="right" id="mastheadDate">—</span>
   </div>
   <div class="nameplate">
-    <span class="the">Njack presents</span>
-    The First <span class="ac">AC</span>
+    <span class="the">NJACK presents</span>
+    <span class="ac">./a.out</span>
   </div>
   <div class="masthead-sub">
-    <span>24-Hour Freshman Contest</span>
+    <span>A Hello World contest</span>
     <span class="sep">·</span>
-    <span>Vol. I</span>
+    <span>24 Hour · 24 Questions</span>
     <span class="sep">·</span>
     <span id="statusTag"><span class="dot"></span>loading</span>
   </div>
@@ -422,8 +419,7 @@ a:hover { color: var(--accent); }
 
     <!-- feature 1: countdown hero -->
     <div class="hero">
-      <span class="kicker">The clock</span>
-      <h1>Everyone leaves with at least one <em>green verdict</em>.</h1>
+      <h1>Every <em>second</em> counts</h1>
       <div class="countdown" id="countdown" aria-live="polite">
         <div class="cd-unit"><div class="cd-num" id="cdDays">--</div><div class="cd-label">days</div></div>
         <div class="cd-sep">:</div>
@@ -440,8 +436,8 @@ a:hover { color: var(--accent); }
 
     <!-- feature 3: leaderboard from the DB -->
     <div class="section-head">
-      <h2><span class="num">01</span>Standings</h2>
-      <p class="section-sub">Live from the judge. Rank is a side effect — the number that matters is your solve count.</p>
+      <h2></span>Standings</h2>
+      <p class="section-sub">Rank is a side effect. the number that matters is your solve count .</p>
     </div>
     <div class="panel-actions">
       <span class="last-updated" id="lastUpdated"></span>
@@ -449,7 +445,7 @@ a:hover { color: var(--accent); }
     </div>
     <div class="table-scroll">
       <table class="lb">
-        <caption>Freshman Orientation Contest — official standings</caption>
+        <caption>A Hello World Contest — official standings</caption>
         <thead>
           <tr>
             <th class="n" scope="col">Rank</th>
@@ -463,7 +459,7 @@ a:hover { color: var(--accent); }
         </tbody>
       </table>
     </div>
-    <p class="freeze-line" id="freezeLine" hidden>Board frozen — the standings you see are the T+23h snapshot. Final results drop at the reveal.</p>
+    <p class="freeze-line" id="freezeLine" hidden>Board frozen — standings are from the T+23h snapshot. Final results drop at the reveal.</p>
 
     <hr class="block-rule">
 
@@ -471,7 +467,7 @@ a:hover { color: var(--accent); }
       <!-- feature 4: top-5 movement graph -->
       <div>
         <div class="section-head">
-          <h2><span class="num">02</span>Top five, in motion</h2>
+          <h2></span>The Podium</h2>
           <p class="section-sub">How the front of the pack has traded places over the contest.</p>
         </div>
         <div class="graph-wrap">
@@ -483,7 +479,7 @@ a:hover { color: var(--accent); }
       <!-- feature 5: hidden-challenge circles -->
       <div>
         <div class="section-head">
-          <h2><span class="num">03</span>Hidden lights</h2>
+          <h2></span>Hidden lights</h2>
           <p class="section-sub">Each circle is a secret side quest. It glows the moment someone cracks it.</p>
         </div>
         <div class="circles" id="circles">
@@ -497,8 +493,8 @@ a:hover { color: var(--accent); }
   <!-- ══════════════ ANNOUNCEMENTS TAB (§6.3) ══════════════ -->
   <section class="tab" id="tab-announcements">
     <div class="section-head">
-      <h2><span class="num">01</span>The wire</h2>
-      <p class="section-sub">Clarifications, release notices, and milestones — newest first.</p>
+      <h2></span>The wire</h2>
+      <p class="section-sub">Clarifications, release notices, and milestones</p>
     </div>
     <div class="feed" id="feed">
       <p class="empty">Nothing on the wire yet. Check back once the briefing starts.</p>
@@ -508,52 +504,44 @@ a:hover { color: var(--accent); }
   <!-- ══════════════ INFO TAB (§6.4 + club PR) ══════════════ -->
   <section class="tab" id="tab-info">
     <div class="section-head">
-      <h2><span class="num">01</span>How it runs</h2>
+      <h2></span>How it runs</h2>
     </div>
     <div class="prose">
-      <p>Twenty-four problems, released in three themed sets of eight, across one 24-hour clock. Set A is JEE and pre-college life, Set B is film, music and internet culture, Set C is campus life. Every statement ends with a “Learn More” footer — that footer is the point of the whole thing.</p>
+      <p>Twenty-four problems, released in three themed sets of eight, across one 24-hour clock. Set A is JEE and pre-college life, Set B is film, music and internet culture, Set C is campus life. Every statement ends with a “Learn More”, that's where you should spend more time</p>
 
       <h3>Schedule</h3>
       <dl class="dl" id="scheduleDl">
         <dt>T+0h</dt><dd>Contest opens · Set A released</dd>
         <dt>T+8h</dt><dd>Set B released</dd>
-        <dt>T+13h</dt><dd>Set C released — all 24 problems now live, before midnight</dd>
-        <dt>T+23h</dt><dd>Leaderboard freezes</dd>
+        <dt>T+13h</dt><dd>Set C released</dd>
+        <dt>T+23h</dt><dd>Leaderboard freezes (let there be some suspense)</dd>
         <dt>T+24h</dt><dd>Contest closes</dd>
         <dt>T+25h</dt><dd>Final standings, editorials, and awards</dd>
       </dl>
 
       <h3>Scoring</h3>
-      <p>Base points come from a problem’s set and slot (100–600). Each wrong submission decays the value by 15%, floored at 40% — and compile errors never count, so experiment freely. The first three solvers of any problem take a 1.20 / 1.12 / 1.06 bonus. Ties break on fewest wrong submissions, then earliest last solve.</p>
+      <p>Base points come from a problem's set and slot (100-600). Each wrong submission decays the value by 15%, floored at 40% *and compile errors never count, so experiment freely. The first three solvers of any problem take a 1.20 / 1.12 / 1.06 bonus. Ties break on fewest wrong submissions, then earliest last solve.</p>
 
       <div class="callout">
         <span class="kicker">On sleep</span>
-        Everything is available before midnight by design. Sleeping is expected — the scoring does not reward staying up. The overnight is for the group puzzles, not for grinding.
+        Everything is available before midnight by design. Sleeping is expected, the scoring does not reward staying up. The overnight is for the group puzzles, not for grinding.
       </div>
 
       <h3>Prizes</h3>
-      <p>Three overall, best-in-set for A/B/C, and a long bench of recognition awards — Certified Wrong Answer Machine, One Shot One Kill, The Comeback, Lone Wolf, Code Golf Champion, and more. The recognition awards carry the majority of the prize count, because most of what’s worth celebrating the leaderboard can’t see.</p>
+      <p>Three overall, best-in-set for A/B/C, and a long bench of recognition awards — Certified Wrong Answer Machine, One Shot One Kill, The Comeback, Lone Wolf, Code Golf Champion, and more. The recognition awards carry the majority of the prize count, because most of whats worth celebrating the leaderboard cant see.</p>
     </div>
 
     <hr class="block-rule">
 
     <!-- feature 6: light PR for the club -->
-    <div class="section-head"><h2><span class="num">02</span>Who’s behind this</h2></div>
+    <div class="section-head"><h2></span>The team behind this</h2></div>
     <div class="club">
-      <svg class="seal" viewBox="0 0 120 120" aria-hidden="true">
-        <circle class="ring" cx="60" cy="60" r="56"></circle>
-        <circle class="ring" cx="60" cy="60" r="42"></circle>
-        <path id="sealArcTop" d="M 24 60 A 36 36 0 0 1 96 60" fill="none"></path>
-        <path id="sealArcBot" d="M 96 60 A 36 36 0 0 1 24 60" fill="none"></path>
-        <text><textPath href="#sealArcTop" startOffset="50%" text-anchor="middle">Njack Coding Club</textPath></text>
-        <text><textPath href="#sealArcBot" startOffset="50%" text-anchor="middle">Est · Freshers</textPath></text>
-        <text class="core" x="60" y="65" text-anchor="middle">{ }</text>
-      </svg>
+      <img class="seal" src="logo.png" alt="Njack CP club logo" />
       <div>
-        <h3>Njack — the campus coding club</h3>
-        <p>We run contests, editorials, and weekly practice for people who’d never written a line of competitive code until this weekend. This orientation is the front door. What happens in the 48 hours after it is what actually turns a one-night contest into a habit — so come say hi.</p>
+        <h3><em>Njack</em> competitive programming</h3>
+        <p>We run contests, editorials, and regular practice for all. People who have never written a line of competitive code until this weekend or people who are better than us. This orientation is the front door. What happens in the 48 hours after it is what actually turns a one-night contest into a habit — so come say hi.</p>
         <div class="club-cta">
-          <a class="btn btn-outline" href="#" data-club="group">Join the group</a>
+          <a class="btn btn-outline" href="https://chat.whatsapp.com/F8KvQsjsrAG80aKsLzuKxo?mode=gi_t" data-club="group" target="_blank">Join the group</a>
           <a class="btn btn-outline" href="#tab-resources" data-tab-link="resources">Where to go next</a>
         </div>
       </div>
@@ -563,16 +551,16 @@ a:hover { color: var(--accent); }
   <!-- ══════════════ RULES TAB (§6.4) ══════════════ -->
   <section class="tab" id="tab-rules">
     <div class="section-head">
-      <h2><span class="num">01</span>Rules &amp; conduct</h2>
-      <p class="section-sub">Short version: play fair, be kind, and ask in the open.</p>
+      <h2></span>Rules &amp; conduct</h2>
+      <p class="section-sub">TL;DR : play fair, be kind, and ask in the open.</p>
     </div>
     <ol class="ol-rules">
       <li>Individual participation. One account per person; multiple accounts are grounds for disqualification.</li>
       <li>No sharing code, approaches, or hints while the contest is live. Discussion opens after T+24h.</li>
       <li>Pre-written personal templates and reference material are allowed.</li>
       <li>AI is permitted only for concept explanation. Requesting or submitting a full solution to a contest problem is not.</li>
-      <li>Organizers don’t compete for prizes. Seniors may play for fun; their scores show separately.</li>
-      <li>Clarifications go through the announcement channel only — answers are broadcast to everyone.</li>
+      <li>Organizers dont compete for prizes. Seniors may play for fun; their scores show separately.</li>
+      <li>Clarifications go through the announcement channel only - answers are broadcast to everyone.</li>
       <li>Report suspected violations privately to a sub-coordinator. Reports are confidential and reviewed by two organizers.</li>
       <li>Harassment or targeting of any participant means immediate removal.</li>
       <li>Organizer decisions on scoring are final, but every dispute is logged and its resolution published.</li>
@@ -582,8 +570,8 @@ a:hover { color: var(--accent); }
   <!-- ══════════════ RESOURCES TAB (feature 2) ══════════════ -->
   <section class="tab" id="tab-resources">
     <div class="section-head">
-      <h2><span class="num">01</span>Where to go next</h2>
-      <p class="section-sub">The contest generates the spark. These keep it lit — start at the top and work down.</p>
+      <h2></span>Where to go next</h2>
+      <p class="section-sub">The contest generates the spark. These keep it lit. start at the top and work down.</p>
     </div>
     <div class="res-grid" id="resGrid"></div>
   </section>
@@ -596,7 +584,7 @@ a:hover { color: var(--accent); }
     <span class="footer-links">
       <a href="#tab-rules" data-tab-link="rules">Rules</a>
       <a href="#tab-resources" data-tab-link="resources">Resources</a>
-      <a href="#" data-club="group">Group</a>
+      <a href="https://chat.whatsapp.com/F8KvQsjsrAG80aKsLzuKxo?mode=gi_t" data-club="group" target="_blank">Group</a>
     </span>
     <span id="footerDate">—</span>
   </div>
@@ -614,12 +602,12 @@ var prevScores = {};   // user_id -> last score, for row-change flashes
 
 // ── resource catalogue (edit here; feature 2) ──────────────────────────────
 var RESOURCES = [
-  { kicker: "Start here", title: "Codeforces", desc: "Make an account and try a Div. 4 round within two weeks — that's the real goal.", url: "https://codeforces.com/", label: "codeforces.com" },
+  { kicker: "Start here", title: "Codeforces", desc: "Make an account and try a Div. 4 round within two weeks and move your way up. that's the real goal.", url: "https://codeforces.com/", label: "codeforces.com" },
   { kicker: "Practice", title: "CSES Problem Set", desc: "A clean, ordered ladder of classic problems. The best next step after this contest.", url: "https://cses.fi/problemset/", label: "cses.fi" },
   { kicker: "Learn", title: "CP-Algorithms", desc: "Readable write-ups of the algorithms you'll keep meeting.", url: "https://cp-algorithms.com/", label: "cp-algorithms.com" },
   { kicker: "Learn", title: "GeeksforGeeks", desc: "Quick references for language basics and common patterns.", url: "https://www.geeksforgeeks.org/", label: "geeksforgeeks.org" },
   { kicker: "Reference", title: "cplusplus.com", desc: "The C++ standard library, looked up fast.", url: "https://cplusplus.com/reference/", label: "cplusplus.com" },
-  { kicker: "Community", title: "The Njack group", desc: "Editorials, weekly practice, and the people who ran tonight. Say hi.", url: "#", label: "join the group" }
+  { kicker: "Community", title: "The Njack group", desc: "Editorials, weekly practice, and the people who raun this joint. ", url: "https://chat.whatsapp.com/F8KvQsjsrAG80aKsLzuKxo?mode=gi_t", label: "join the group" }
 ];
 
 // ---------------------------------------------------------------------------
