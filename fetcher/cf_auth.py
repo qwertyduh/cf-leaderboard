@@ -33,8 +33,13 @@ from urllib.parse import urlencode
 
 CF_API_BASE = "https://codeforces.com/api"
 
-# Printable ASCII characters (codes 33..126) allowed in the apiSig prefix.
-_RAND_CHARS = "".join(chr(c) for c in range(33, 127))
+# Characters allowed in the apiSig prefix.  The CF spec permits any 6
+# characters, but the prefix is round-tripped through the URL query (it is
+# percent-encoded when the URL is built and decoded by CF before it re-reads
+# the first 6 chars as `rand`).  Restricting to alphanumerics avoids URL
+# metacharacters (`#/&=?%+`) that intermittently corrupt that round-trip and
+# make CF reject an otherwise-valid signature with "Incorrect signature".
+_RAND_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 
 def _random_prefix(length: int = 6) -> str:
