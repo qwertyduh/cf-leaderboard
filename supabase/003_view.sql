@@ -19,8 +19,8 @@ ORDER BY total_score DESC;
 
 -- ── Grant read access to public roles ──────────────────────────────────────
 -- By default, views in PostgreSQL run with the permissions of their owner
--- (security definer). The owner is the role that ran CREATE VIEW — typically
--- postgres or the Superbase dashboard user — which bypasses RLS. That's
+-- (security definer). The owner is the role that ran CREATE VIEW - typically
+-- postgres or the Superbase dashboard user - which bypasses RLS. That's
 -- exactly what we want: the view aggregates across all rows, and we control
 -- access via GRANT / REVOKE on the view itself.
 GRANT SELECT ON leaderboard TO anon;

@@ -1,12 +1,12 @@
-"""Probe ``contest.standings`` for a mashup — unsigned vs signed.
+"""Probe ``contest.standings`` for a mashup - unsigned vs signed.
 
 Standalone live test.  Hits the Codeforces API for the contest in
 ``contests.txt`` (or one passed via ``--contest``) twice:
 
-  * **unsigned** — the plain public URL (should FAIL for a mashup), and
-  * **signed**  — built via :func:`cf_auth.build_signed_url`
+  * **unsigned** - the plain public URL (should FAIL for a mashup), and
+  * **signed**  - built via :func:`cf_auth.build_signed_url`
     (should return standings, provided the account owning the key is a
-    participant/coach/manager of the mashup — see note in ``cf_auth.py``).
+    participant/coach/manager of the mashup - see note in ``cf_auth.py``).
 
 Usage::
 
@@ -91,7 +91,7 @@ def main() -> None:
     api_key, api_secret = load_cf_credentials()
     if not api_key or not api_secret:
         print(
-            "CF_API_KEY / CF_API_SECRET not set in .env — cannot build a "
+            "CF_API_KEY / CF_API_SECRET not set in .env - cannot build a "
             "signed request."
         )
         sys.exit(1)

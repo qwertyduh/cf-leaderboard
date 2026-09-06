@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Print the last few fetch_log rows — no SQL required.
+"""Print the last few fetch_log rows - no SQL required.
 
 Usage::
 

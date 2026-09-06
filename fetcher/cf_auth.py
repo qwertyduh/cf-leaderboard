@@ -7,14 +7,14 @@ authenticated request carrying ``apiKey``, ``time`` and ``apiSig``.
 
 Signing scheme (per https://codeforces.com/apiHelp):
 
-  1. Take every query parameter *except* ``apiSig`` — including ``apiKey``
-     and ``time`` — and sort them alphabetically by key.
+  1. Take every query parameter *except* ``apiSig`` - including ``apiKey``
+     and ``time`` - and sort them alphabetically by key.
   2. Join them as ``key1=value1&key2=value2...``.
   3. Generate a fresh random 6-character prefix ``rand`` from printable
      ASCII (codes 33–126).
   4. Build the string ``rand + "/" + method + "?" + sorted_params + "#" + secret``.
   5. SHA-512-hash that string and take the hex digest.
-  6. ``apiSig = rand + digest`` — the same ``rand`` is prepended.
+  6. ``apiSig = rand + digest`` - the same ``rand`` is prepended.
 
 .. note::
 
@@ -22,7 +22,7 @@ Signing scheme (per https://codeforces.com/apiHelp):
     account that owns ``apiKey`` must actually be a participant, coach, or
     manager of the mashup; a correctly-signed request from an unrelated
     account is still rejected with a ``FAILED`` status.  We cannot detect
-    that from here — it has to be confirmed on the CF side.
+    that from here - it has to be confirmed on the CF side.
 """
 
 import hashlib
@@ -83,8 +83,8 @@ def build_signed_url(
     # The signature is computed over the *raw* (unencoded) sorted params.
     api_sig = compute_api_sig(rand, method, signed_params, api_secret)
 
-    # When building the URL, every value — including apiSig, whose random
-    # prefix may contain '&', '=', '#', etc. — must be percent-encoded.
+    # When building the URL, every value - including apiSig, whose random
+    # prefix may contain '&', '=', '#', etc. - must be percent-encoded.
     query_params = dict(signed_params)
     query_params["apiSig"] = api_sig
     query = urlencode(sorted(query_params.items()))

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>./a.out</title>
-<meta name="description" content="Live standings, announcements, and side quests for Njack's 24-hour freshman orientation programming contest.">
+<meta name="description" content="Live standings, announcements, and side quests for Njack's 12-hour freshman orientation programming contest.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,7 +15,7 @@
 
 <style>
 /* ==========================================================================
-   tokens — from design.md §2–§4 (implemented exactly)
+   tokens - from design.md §2–§4 (implemented exactly)
    ========================================================================== */
 :root {
   --paper:        #F3F0E9;
@@ -378,7 +378,7 @@ a:hover { color: var(--accent); }
 <header class="masthead wrap">
   <div class="masthead-top">
     <span>IIT Patna</span>
-    <span class="right" id="mastheadDate">—</span>
+    <span class="right" id="mastheadDate">-</span>
   </div>
   <div class="nameplate">
     <span class="the">NJACK presents</span>
@@ -387,7 +387,7 @@ a:hover { color: var(--accent); }
   <div class="masthead-sub">
     <span>A Hello World contest</span>
     <span class="sep">·</span>
-    <span>24 Hour · 24 Questions</span>
+    <span>12 Hour · 24 Questions</span>
     <span class="sep">·</span>
     <span id="statusTag"><span class="dot"></span>loading</span>
   </div>
@@ -408,7 +408,7 @@ a:hover { color: var(--accent); }
 <div class="ticker">
   <div class="ticker-inner">
     <span class="ticker-tag">⚠ Wire</span>
-    <div class="ticker-track"><span class="ticker-move" id="tickerMove">Standings load live from the judge — announcements will scroll here.</span></div>
+    <div class="ticker-track"><span class="ticker-move" id="tickerMove">Standings load live from the judge - announcements will scroll here.</span></div>
   </div>
 </div>
 
@@ -445,7 +445,7 @@ a:hover { color: var(--accent); }
     </div>
     <div class="table-scroll">
       <table class="lb">
-        <caption>A Hello World Contest — official standings</caption>
+        <caption>A Hello World Contest - official standings</caption>
         <thead>
           <tr>
             <th class="n" scope="col">Rank</th>
@@ -459,7 +459,7 @@ a:hover { color: var(--accent); }
         </tbody>
       </table>
     </div>
-    <p class="freeze-line" id="freezeLine" hidden>Board frozen — standings are from the T+23h snapshot. Final results drop at the reveal.</p>
+    <p class="freeze-line" id="freezeLine" hidden>Board frozen - standings are from the T+23h snapshot. Final results drop at the reveal.</p>
 
     <hr class="block-rule">
 
@@ -507,28 +507,26 @@ a:hover { color: var(--accent); }
       <h2></span>How it runs</h2>
     </div>
     <div class="prose">
-      <p>Twenty-four problems, released in three themed sets of eight, across one 24-hour clock. Set A is JEE and pre-college life, Set B is film, music and internet culture, Set C is campus life. Every statement ends with a “Learn More”, that's where you should spend more time</p>
+      <p>Twenty-four problems, released in three themed sets of eight, across one 12-hour clock. Set A is JEE and pre-college life, Set B is film, music and internet culture, Set C is campus life. Every statement ends with a “Learn More”, that's where you should spend more time</p>
 
       <h3>Schedule</h3>
       <dl class="dl" id="scheduleDl">
         <dt>T+0h</dt><dd>Contest opens · Set A released</dd>
-        <dt>T+8h</dt><dd>Set B released</dd>
-        <dt>T+13h</dt><dd>Set C released</dd>
-        <dt>T+23h</dt><dd>Leaderboard freezes (let there be some suspense)</dd>
-        <dt>T+24h</dt><dd>Contest closes</dd>
-        <dt>T+25h</dt><dd>Final standings, editorials, and awards</dd>
+        <dt>T+4h</dt><dd>Set B released</dd>
+        <dt>T+8h</dt><dd>Set C released</dd>
+        <dt>T+12h</dt><dd>Contest closes</dd>
       </dl>
 
       <h3>Scoring</h3>
       <p>Base points come from a problem's set and slot (100-600). Each wrong submission decays the value by 15%, floored at 40% *and compile errors never count, so experiment freely. The first three solvers of any problem take a 1.20 / 1.12 / 1.06 bonus. Ties break on fewest wrong submissions, then earliest last solve.</p>
 
       <div class="callout">
-        <span class="kicker">On sleep</span>
-        Everything is available before midnight by design. Sleeping is expected, the scoring does not reward staying up. The overnight is for the group puzzles, not for grinding.
+        <span class="kicker">On pace</span>
+        All 24 problems are out within the 12-hour window. Scoring does not reward grinding non-stop, so take breaks, step away, and come back fresh.
       </div>
 
       <h3>Prizes</h3>
-      <p>Three overall, best-in-set for A/B/C, and a long bench of recognition awards — Certified Wrong Answer Machine, One Shot One Kill, The Comeback, Lone Wolf, Code Golf Champion, and more. The recognition awards carry the majority of the prize count, because most of whats worth celebrating the leaderboard cant see.</p>
+      <p>Three overall, best-in-set for A/B/C, and a long bench of recognition awards - Certified Wrong Answer Machine, One Shot One Kill, The Comeback, Lone Wolf, Code Golf Champion, and more. The recognition awards carry the majority of the prize count, because most of whats worth celebrating the leaderboard cant see.</p>
     </div>
 
     <hr class="block-rule">
@@ -539,7 +537,7 @@ a:hover { color: var(--accent); }
       <img class="seal" src="logo.png" alt="Njack CP club logo" />
       <div>
         <h3><em>Njack</em> competitive programming</h3>
-        <p>We run contests, editorials, and regular practice for all. People who have never written a line of competitive code until this weekend or people who are better than us. This orientation is the front door. What happens in the 48 hours after it is what actually turns a one-night contest into a habit — so come say hi.</p>
+        <p>We run contests, editorials, and regular practice for all. People who have never written a line of competitive code until this weekend or people who are better than us. This orientation is the front door. What happens in the 48 hours after it is what actually turns a one-night contest into a habit - so come say hi.</p>
         <div class="club-cta">
           <a class="btn btn-outline" href="https://chat.whatsapp.com/F8KvQsjsrAG80aKsLzuKxo?mode=gi_t" data-club="group" target="_blank">Join the group</a>
           <a class="btn btn-outline" href="#tab-resources" data-tab-link="resources">Where to go next</a>
@@ -556,7 +554,7 @@ a:hover { color: var(--accent); }
     </div>
     <ol class="ol-rules">
       <li>Individual participation. One account per person; multiple accounts are grounds for disqualification.</li>
-      <li>No sharing code, approaches, or hints while the contest is live. Discussion opens after T+24h.</li>
+      <li>No sharing code, approaches, or hints while the contest is live. Discussion opens after T+12h.</li>
       <li>Pre-written personal templates and reference material are allowed.</li>
       <li>AI is permitted only for concept explanation. Requesting or submitting a full solution to a contest problem is not.</li>
       <li>Organizers dont compete for prizes. Seniors may play for fun; their scores show separately.</li>
@@ -586,7 +584,7 @@ a:hover { color: var(--accent); }
       <a href="#tab-resources" data-tab-link="resources">Resources</a>
       <a href="https://chat.whatsapp.com/F8KvQsjsrAG80aKsLzuKxo?mode=gi_t" data-club="group" target="_blank">Group</a>
     </span>
-    <span id="footerDate">—</span>
+    <span id="footerDate">-</span>
   </div>
 </footer>
 
@@ -689,7 +687,7 @@ function renderStatus() {
 }
 
 // ---------------------------------------------------------------------------
-// countdown (feature 1) — config hardcode OR schedule fallback
+// countdown (feature 1) - config hardcode OR schedule fallback
 // ---------------------------------------------------------------------------
 function countdownTarget() {
   if (typeof COUNTDOWN_TARGET === "string" && COUNTDOWN_TARGET) {
@@ -714,7 +712,7 @@ function renderCountdown() {
 
   var diff = tgt.at.getTime() - Date.now();
   if (diff <= 0) {
-    grid.innerHTML = '<div class="cd-done">— the clock has run out —</div>';
+    grid.innerHTML = '<div class="cd-done">- the clock has run out -</div>';
     cap.textContent = tgt.label || "";
     return;
   }
@@ -744,12 +742,12 @@ function ensureUsersMap() {
 }
 
 // ---------------------------------------------------------------------------
-// leaderboard (feature 3, §6.2) — live view or frozen snapshot
+// leaderboard (feature 3, §6.2) - live view or frozen snapshot
 // ---------------------------------------------------------------------------
 function renderLeaderboard(rows) {
   var body = document.getElementById("lbBody");
   if (!rows.length) {
-    body.innerHTML = '<tr class="state-row"><td colspan="4">No solves yet — plenty of clock left to be first.</td></tr>';
+    body.innerHTML = '<tr class="state-row"><td colspan="4">No solves yet - plenty of clock left to be first.</td></tr>';
     return;
   }
   var html = "";
@@ -799,7 +797,7 @@ function loadLiveLeaderboard() {
     .catch(function (err) {
       btn.disabled = false;
       document.getElementById("lbBody").innerHTML =
-        '<tr class="state-row err"><td colspan="4">Network error — retrying shortly.</td></tr>';
+        '<tr class="state-row err"><td colspan="4">Network error - retrying shortly.</td></tr>';
       return [];
     });
 }
@@ -815,7 +813,7 @@ function loadFrozenLeaderboard() {
         var rows = resp.data || [];
         if (!rows.length) {
           document.getElementById("lbBody").innerHTML =
-            '<tr class="state-row"><td colspan="4">Board frozen — the pre-freeze snapshot appears here shortly.</td></tr>';
+            '<tr class="state-row"><td colspan="4">Board frozen - the pre-freeze snapshot appears here shortly.</td></tr>';
           document.getElementById("lastUpdated").textContent = "frozen";
           return [];
         }
@@ -920,7 +918,7 @@ function renderCircles(rows) {
     if (c.lit) lit++;
     var num = i + 1;
     var title = c.lit
-      ? escapeHtml(c.label) + (c.solved_by ? " — cracked by " + escapeHtml(c.solved_by) : " — solved")
+      ? escapeHtml(c.label) + (c.solved_by ? " - cracked by " + escapeHtml(c.solved_by) : " - solved")
       : escapeHtml(c.hint || "still hidden");
     return '<div class="circle-item">'
       + '<div class="circle ' + (c.lit ? "lit" : "") + '" title="' + title + '">' + (c.lit ? "✦" : num) + "</div>"
@@ -970,7 +968,7 @@ function loadAnnouncements() {
       var move = document.getElementById("tickerMove");
       move.textContent = lines.length
         ? lines.join("      ·      ")
-        : "Standings load live from the judge — announcements will scroll here.";
+        : "Standings load live from the judge - announcements will scroll here.";
     }).catch(function () {});
 }
 

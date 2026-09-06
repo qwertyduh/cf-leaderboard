@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`scoring` — the §4 contest scoring model."""
+"""Unit tests for :mod:`scoring` - the §4 contest scoring model."""
 
 from scoring import (
     DEFAULT_BASE,

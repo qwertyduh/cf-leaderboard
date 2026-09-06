@@ -2,13 +2,13 @@
 -- Run this after 001_tables.sql through 006_engagement.sql.
 --
 -- Adds the organizer-maintained problem catalog that the contest doc leans on:
---   * §4.1 scoring — base points are a function of (set, slot), so the fetcher
+--   * §4.1 scoring - base points are a function of (set, slot), so the fetcher
 --     needs each problem's set+slot to score it (see fetcher/scoring.py).
---   * §3.3 / §5.4 problem index — title, theme, and the "Learn More" footer
+--   * §3.3 / §5.4 problem index - title, theme, and the "Learn More" footer
 --     links are rendered by the frontend problem index.
 --
 -- One row per (contest, problem_index).  Seeded by organizers via the Supabase
--- SQL editor (there is no admin UI yet — see README for an INSERT example).
+-- SQL editor (there is no admin UI yet - see README for an INSERT example).
 
 CREATE TABLE problems (
     id            uuid     PRIMARY KEY DEFAULT gen_random_uuid(),

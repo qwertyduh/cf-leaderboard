@@ -1,4 +1,4 @@
-"""Continuous fetcher loop — re-runs main.py on a fixed interval.
+"""Continuous fetcher loop - re-runs main.py on a fixed interval.
 
 Start this inside ``screen`` so it survives terminal close::
 
@@ -30,7 +30,7 @@ MAIN_SCRIPT = FETCHER_DIR / "main.py"
 LOG_FILE = FETCHER_DIR / "run_loop.log"
 
 # ---------------------------------------------------------------------------
-# logging — writes to both console and file
+# logging - writes to both console and file
 # ---------------------------------------------------------------------------
 
 
@@ -43,13 +43,13 @@ def setup_logging() -> logging.Logger:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    # Console — INFO and above
+    # Console - INFO and above
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(logging.INFO)
     console.setFormatter(fmt)
     _logger.addHandler(console)
 
-    # File — DEBUG and above (everything)
+    # File - DEBUG and above (everything)
     file_handler = logging.FileHandler(str(LOG_FILE), encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(fmt)
@@ -101,7 +101,7 @@ def run_once() -> int:
 
     elapsed = time.monotonic() - start
     logger.info(
-        "Run finished in %.0f s — exit code %d", elapsed, result.returncode
+        "Run finished in %.0f s - exit code %d", elapsed, result.returncode
     )
 
     # Show the last few lines of the fetcher's own log output.
@@ -118,7 +118,7 @@ def run_once() -> int:
 
 def main() -> None:
     logger.info(
-        "cf-leaderboard loop starting — poll every %d min, timeout=%d s",
+        "cf-leaderboard loop starting - poll every %d min, timeout=%d s",
         POLL_MINUTES,
         RUN_TIMEOUT_SECONDS,
     )
@@ -132,7 +132,7 @@ def main() -> None:
             datetime.now(tz=timezone.utc).isoformat()
         )
         logger.info(
-            "Run #%d (%d failures so far) — next poll at %s",
+            "Run #%d (%d failures so far) - next poll at %s",
             run_count,
             failures,
             next_run,
@@ -144,7 +144,7 @@ def main() -> None:
                 failures += 1
         except Exception:
             logger.exception(
-                "Unhandled exception in run_loop itself — continuing loop"
+                "Unhandled exception in run_loop itself - continuing loop"
             )
             failures += 1
 
