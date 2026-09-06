@@ -632,22 +632,25 @@ def ingest_contest_submissions(
     api_key: Optional[str],
     api_secret: Optional[str],
 ) -> tuple[int, set[str]]:
-    """Ingest new judged submissions (any verdict) from ``contest.status``.
+    """Ingest judged submissions (any terminal verdict) from ``contest.status``.
 
-    Pages newest-first and stops once it reaches submissions already stored
-    (id <= high-watermark), so steady-state runs are cheap.  ``tracked_handles``
-    of ``None`` means "store every participant" (contests.txt mode).
+    Pages through the full submission list each run and upserts every judged
+    row (deduped on the CF submission id).  We deliberately do NOT early-stop on
+    a high-watermark: a submission that was still ``TESTING`` when an earlier run
+    passed it is not stored yet but has a *lower* id than later-judged rows, so a
+    watermark stop would skip it permanently once it finalises.  A full pass also
+    picks up verdict changes (e.g. TESTING -> OK) via the idempotent upsert.
+    ``tracked_handles`` of ``None`` means "store every participant"
+    (contests.txt mode).
 
     Returns ``(submissions_ingested, affected_problem_indexes)``.
     """
-    watermark = latest_stored_submission_id(supabase, contest_uuid)
     ingested = 0
     affected: set[str] = set()
     from_idx = 1
     pages = 0
-    reached_known = False
 
-    while pages < MAX_STATUS_PAGES and not reached_known:
+    while pages < MAX_STATUS_PAGES:
         url = build_status_url(
             cf_contest_id,
             from_idx,
@@ -673,12 +676,10 @@ def ingest_contest_submissions(
             sub_id = sub.get("id")
             if sub_id is None:
                 continue
-            if sub_id <= watermark:
-                reached_known = True
-                continue
 
             verdict = sub.get("verdict")
-            # Skip not-yet-judged submissions; they'll appear finalized later.
+            # Skip not-yet-judged submissions; they'll be stored on a later run
+            # once they finalise (the full-list pass guarantees we revisit them).
             if verdict in (None, "TESTING", "SUBMITTED"):
                 continue
 
@@ -722,10 +723,14 @@ def ingest_contest_submissions(
         pages += 1
         from_idx += STATUS_PAGE_SIZE
 
-    if pages >= MAX_STATUS_PAGES and not reached_known:
+        # Last page reached (a short page means no more rows follow).
+        if len(result) < STATUS_PAGE_SIZE:
+            break
+
+    if pages >= MAX_STATUS_PAGES:
         logger.warning(
-            "Contest %d: hit MAX_STATUS_PAGES (%d) before catching up - "
-            "older submissions may be unread this run",
+            "Contest %d: hit MAX_STATUS_PAGES (%d) - some submissions may be "
+            "unread this run",
             cf_contest_id,
             MAX_STATUS_PAGES,
         )
