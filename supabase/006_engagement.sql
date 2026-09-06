@@ -6,7 +6,7 @@
 -- the Bookie's Table prediction pool, and rank-over-time history.
 --
 -- All four tables follow the existing read-only pattern (002_rls.sql):
--- anon/authenticated get SELECT only. There is no public write path yet —
+-- anon/authenticated get SELECT only. There is no public write path yet -
 -- organizers seed and update these by hand via the Supabase SQL editor
 -- (see README for examples), or the fetcher's service_role key writes
 -- leaderboard_snapshots automatically on every run.
@@ -24,7 +24,7 @@ CREATE TABLE announcements (
 -- ── contest_schedule ─────────────────────────────────────────────────────
 -- One row per named phase boundary (§3.2). The frontend derives the current
 -- phase badge and "time to next release" countdown by comparing now() to
--- these timestamps — no hardcoded dates in the frontend.
+-- these timestamps - no hardcoded dates in the frontend.
 CREATE TABLE contest_schedule (
     id      uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     phase   text        NOT NULL UNIQUE,   -- 'OPEN' | 'SET_B' | 'SET_C' | 'FREEZE' | 'CLOSE'
@@ -79,7 +79,7 @@ CREATE POLICY "anon can select leaderboard_snapshots" ON leaderboard_snapshots F
 CREATE POLICY "authenticated can select leaderboard_snapshots" ON leaderboard_snapshots FOR SELECT TO authenticated USING (true);
 
 -- No INSERT/UPDATE/DELETE policies for anon/authenticated on any of the
--- four tables above — same reasoning as 002_rls.sql. announcements,
+-- four tables above - same reasoning as 002_rls.sql. announcements,
 -- contest_schedule, and predictions are organizer-maintained via the
 -- Supabase dashboard; leaderboard_snapshots is fetcher-maintained via
 -- service_role, which bypasses RLS.

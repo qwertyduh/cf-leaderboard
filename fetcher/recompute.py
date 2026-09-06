@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Manual recompute / CSV fallback — the §5.3 override path.
+"""Manual recompute / CSV fallback - the §5.3 override path.
 
 Two modes:
 
@@ -10,7 +10,7 @@ Two modes:
 
 * ``--csv PATH``: load a CSV submission dump into the ``submissions`` table
   first, then run the same full recompute.  This is the mandatory fallback for
-  when the live CF API path is unavailable mid-contest (§5.3) — it must be
+  when the live CF API path is unavailable mid-contest (§5.3) - it must be
   usable within ten minutes, so keep a fresh dump handy.
 
 CSV format (header row required)::
@@ -101,7 +101,7 @@ def import_csv(supabase, path: Path) -> int:
                     skipped += 1
                     continue
 
-            # Resolve contest — create a minimal row only if we've never seen it
+            # Resolve contest - create a minimal row only if we've never seen it
             # (never clobber real metadata pulled from the API).
             contest_uuid = contest_cache.get(cf_contest_id)
             if contest_uuid is None:

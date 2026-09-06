@@ -1,16 +1,16 @@
-"""cf-leaderboard fetcher — pulls Codeforces data and writes to Supabase.
+"""cf-leaderboard fetcher - pulls Codeforces data and writes to Supabase.
 
-Design (per contest-documentation.md §4, §5):
+Design (per docs/contest-documentation.md §4, §5):
 
 * **contest.status is the scoring source (§5.2).**  Every judged submission
   (accepted *and* rejected) is ingested into the ``submissions`` table.  The
   ``problem_results`` table is a *deterministic projection* recomputed from
-  those stored submissions — so a re-run, a formula change, or a CSV import
+  those stored submissions - so a re-run, a formula change, or a CSV import
   (``recompute.py``, §5.3) all produce identical, re-runnable results (§13).
-* **contest.standings is used only for metadata** — contest name / start /
+* **contest.standings is used only for metadata** - contest name / start /
   duration and the participant roster for ``contests.txt`` contests.  It is no
   longer the source of solved / wrong-submission data.
-* **Scoring is the §4 model** — base points from each problem's ``(set, slot)``
+* **Scoring is the §4 model** - base points from each problem's ``(set, slot)``
   tag in the ``problems`` table, ``max(0.4, 1 - 0.15·W)`` decay with compilation
   errors excluded, and graduated 1.20 / 1.12 / 1.06 first-solver multipliers.
 """
@@ -44,7 +44,7 @@ STATUS_PAGE_SIZE = 1000   # contest.status rows per page
 MAX_STATUS_PAGES = 50     # safety cap on a single contest's status scan
 
 # Verdicts that count as a "wrong submission" for decay (§4.2) and the
-# total-wrong tiebreaker (§4.4).  COMPILATION_ERROR is deliberately absent —
+# total-wrong tiebreaker (§4.4).  COMPILATION_ERROR is deliberately absent -
 # the doc excludes compile errors.  Anything not listed here and not "OK"
 # (TESTING, SKIPPED, etc.) is ignored.
 WRONG_VERDICTS = frozenset(
@@ -157,7 +157,7 @@ def load_handles(filepath: Path) -> list[str]:
 def load_contest_ids(filepath: Path) -> list[int]:
     """Read CF contest IDs from a text file, one per line (optional file)."""
     if not filepath.exists():
-        logger.info("Contests file not found (%s) — skipping", filepath)
+        logger.info("Contests file not found (%s) - skipping", filepath)
         return []
 
     raw = filepath.read_text(encoding="utf-8").splitlines()
@@ -170,7 +170,7 @@ def load_contest_ids(filepath: Path) -> list[int]:
             ids.append(int(stripped))
         except ValueError:
             logger.warning(
-                "Invalid contest ID in %s: %r — skipping", filepath, stripped
+                "Invalid contest ID in %s: %r - skipping", filepath, stripped
             )
 
     if not ids:
@@ -281,7 +281,7 @@ def fetch_contest_standings(
     api_key: Optional[str] = None,
     api_secret: Optional[str] = None,
 ) -> Optional[dict]:
-    """Fetch contest standings — used for metadata and roster only (§5.2).
+    """Fetch contest standings - used for metadata and roster only (§5.2).
 
     When ``authenticated`` is true the request is signed via
     :func:`cf_auth.build_signed_url` (required for mashup contests).
@@ -499,10 +499,10 @@ def preload_problem_catalog(
             }
         logger.info("Preloaded %d problem catalog entr(ies)", len(catalog))
     except Exception:
-        # The problems table may not exist yet (007 not run) — scoring falls
+        # The problems table may not exist yet (007 not run) - scoring falls
         # back to DEFAULT_BASE, so this is non-fatal.
         logger.warning(
-            "Could not preload problem catalog (has 007_problems.sql run?) — "
+            "Could not preload problem catalog (has 007_problems.sql run?) - "
             "scoring will use default base points"
         )
     return catalog
@@ -527,7 +527,7 @@ def sync_contest_metadata(
 ) -> Optional[str]:
     """Upsert the contest row (and, optionally, its full roster) from standings.
 
-    Standings are used **only** for metadata + roster here (§5.2) — no
+    Standings are used **only** for metadata + roster here (§5.2) - no
     solved/wrong data is derived from them.  Returns the contest UUID or ``None``.
     """
     cf_data = fetch_contest_standings(
@@ -712,7 +712,7 @@ def ingest_contest_submissions(
 
     if pages >= MAX_STATUS_PAGES and not reached_known:
         logger.warning(
-            "Contest %d: hit MAX_STATUS_PAGES (%d) before catching up — "
+            "Contest %d: hit MAX_STATUS_PAGES (%d) before catching up - "
             "older submissions may be unread this run",
             cf_contest_id,
             MAX_STATUS_PAGES,
@@ -756,7 +756,7 @@ def recompute_contest_results(
     submission for each ``(contest, problem)``, derives solved / wrong-before-AC
     / first-AC time per user, ranks solvers by first-AC time to assign
     ``solve_order`` (§4.3), and writes the §4 score.  Idempotent and
-    re-runnable — the CSV fallback (recompute.py, §5.3) calls this too.
+    re-runnable - the CSV fallback (recompute.py, §5.3) calls this too.
 
     Returns the number of ``problem_results`` rows upserted.
     """
@@ -899,7 +899,7 @@ def write_leaderboard_snapshot(supabase: Client) -> int:
 
     Reads the ``leaderboard`` view in its §4.4 tiebroken order and stores rank,
     score, and solved count per user.  This feeds both the rank-over-time graph
-    (§6.2) and the leaderboard freeze (§4.5) — the frozen board is drawn from the
+    (§6.2) and the leaderboard freeze (§4.5) - the frozen board is drawn from the
     snapshot taken at T+23h.
     """
     try:
@@ -953,14 +953,14 @@ def collect_contest_ids(
         ratings = fetch_user_ratings(handle, session)
         if not ratings:
             if ratings is not None:
-                logger.info("Handle %s has no rated contests — skipping", handle)
+                logger.info("Handle %s has no rated contests - skipping", handle)
             continue
         for entry in ratings:
             cid = entry["contestId"]
             contests.setdefault(cid, entry["contestName"])
     if not contests:
         logger.warning(
-            "No contests discovered — handles may be invalid or unrated."
+            "No contests discovered - handles may be invalid or unrated."
         )
     return contests
 
@@ -1050,7 +1050,7 @@ def main() -> None:
     if mashup_contest_ids and not (cf_api_key and cf_api_secret):
         logger.warning(
             "Mashup contests configured but CF_API_KEY / CF_API_SECRET missing "
-            "— signed requests for %s will fail",
+            "- signed requests for %s will fail",
             mashup_contest_ids,
         )
 

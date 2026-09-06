@@ -11,7 +11,7 @@ ALTER TABLE leaderboard_snapshots
 
 -- Optional REVEAL phase for contest_schedule.  The board stays frozen from
 -- FREEZE until REVEAL (final standings at T+25h, §4.5); if organizers omit the
--- REVEAL row the board simply stays frozen.  Documented here for clarity — no
+-- REVEAL row the board simply stays frozen.  Documented here for clarity - no
 -- schema change is needed since `phase` is free text, but the CHECK below keeps
 -- typos out if you prefer to enforce the vocabulary.
 --

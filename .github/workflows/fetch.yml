@@ -1,7 +1,7 @@
 name: Fetch CF Data
 
 on:
-  # Run manually from the Actions tab only — cron is disabled for now.
+  # Run manually from the Actions tab only - cron is disabled for now.
   # To re-enable scheduled runs, uncomment the block below:
   #
   # schedule:
@@ -28,7 +28,7 @@ jobs:
         working-directory: fetcher
         run: |
           cat > handles.txt << 'EOF'
-          # CF handles to track — edit this list to add/remove users.
+          # CF handles to track - edit this list to add/remove users.
           tourist
           Benq
           qwertyduh

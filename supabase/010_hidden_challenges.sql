@@ -3,7 +3,7 @@
 --
 -- Powers the hidden-challenge board on the site (§7 side quests). One row per
 -- hidden challenge; organizers flip `lit` to true (and optionally set
--- `solved_by`) the moment someone cracks it. Purely manual — there is no
+-- `solved_by`) the moment someone cracks it. Purely manual - there is no
 -- automated solver detection, by design.
 
 CREATE TABLE hidden_challenges (

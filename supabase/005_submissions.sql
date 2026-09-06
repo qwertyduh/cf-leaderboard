@@ -3,7 +3,7 @@
 
 -- ── submissions ─────────────────────────────────────────────────────────────
 -- One row per accepted Codeforces submission from a tracked user.  The CF
--- submission id is the primary key (and dedup key) — re-fetching during the
+-- submission id is the primary key (and dedup key) - re-fetching during the
 -- 20-minute sliding window is a harmless no-op.
 CREATE TABLE submissions (
     id                    int PRIMARY KEY,   -- CF submission ID (dedup key)

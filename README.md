@@ -22,7 +22,7 @@ cf-leaderboard/
    and `CF_API_SECRET`.
 3. Run the migrations in `supabase/` against your Supabase project:
 
-   **Option A — Supabase Dashboard (easiest)**
+   **Option A - Supabase Dashboard (easiest)**
    Open the [SQL Editor](https://supabase.com/dashboard/project/wrdwuzmjzcscolhjejtk/sql)
    and run the files **in order**:
    1. `supabase/001_tables.sql`
@@ -36,7 +36,7 @@ cf-leaderboard/
    9. `supabase/009_snapshot_solved_reveal.sql`
    10. `supabase/010_hidden_challenges.sql`
 
-   **Option B — psql (if you have the DB password)**
+   **Option B - psql (if you have the DB password)**
    ```bash
    for f in supabase/001_tables.sql supabase/002_rls.sql supabase/003_view.sql \
             supabase/004_fetch_log_source.sql supabase/005_submissions.sql \
@@ -53,17 +53,17 @@ cf-leaderboard/
 
 ## Running the fetcher
 
-`main.py` runs one fetch+score cycle and exits — it's a one-shot script.
+`main.py` runs one fetch+score cycle and exits - it's a one-shot script.
 You have two options for running it regularly:
 
-### Option A — GitHub Actions (recommended, free)
+### Option A - GitHub Actions (recommended, free)
 
 The repo includes `.github/workflows/fetch.yml` which runs every 15 minutes
 via cron.  No laptop needed.
 
 **Setup:**
 
-1. Push this repo to GitHub (public or private — both work on the free tier)
+1. Push this repo to GitHub (public or private - both work on the free tier)
 2. Go to **Settings → Secrets and variables → Actions → New repository secret**
 3. Add two secrets:
 
@@ -76,7 +76,7 @@ via cron.  No laptop needed.
    from the **Actions** tab → **Fetch CF Data** → **Run workflow**.
 
 **Editing the handle / contest lists:** the workflow creates `handles.txt` and
-`contests.txt` inline from the YAML — edit the lists in `.github/workflows/fetch.yml`
+`contests.txt` inline from the YAML - edit the lists in `.github/workflows/fetch.yml`
 and push.
 
 **⚠️ Disable the laptop loop once this is live** so you don't double-run:
@@ -87,7 +87,7 @@ Or if you want to keep it as a backup, edit `run_loop.py` and set
 `POLL_MINUTES` to something infrequent (e.g. 240) so it runs only a few
 times a day.
 
-### Option B — Laptop loop (screen)
+### Option B - Laptop loop (screen)
 
 ```bash
 cd fetcher
@@ -99,7 +99,7 @@ screen -S cf-fetch -X quit              # stop
 
 ## Deploying the frontend
 
-`frontend/` is a zero-build static site — two files (`index.html` + `config.js`).
+`frontend/` is a zero-build static site - two files (`index.html` + `config.js`).
 Any static host works.  The simplest free option:
 
 ### GitHub Pages
@@ -107,14 +107,14 @@ Any static host works.  The simplest free option:
 1. Push the repo to GitHub
 2. Go to **Settings → Pages**
 3. Set **Source** to **Deploy from a branch**, select `main`, folder `/frontend`
-4. Click **Save** — your site is live at `https://<user>.github.io/cf-leaderboard/`
+4. Click **Save** - your site is live at `https://<user>.github.io/cf-leaderboard/`
 
 ### Vercel / Netlify
 
 Drag the `frontend/` folder onto [vercel.com](https://vercel.com) or
 [netlify.com](https://netlify.com).  No config needed.
 
-The anon key in `config.js` is safe to commit — RLS restricts the `anon`
+The anon key in `config.js` is safe to commit - RLS restricts the `anon`
 role to `SELECT`-only on `users`, `contests`, `problem_results`, and the
 `leaderboard` view.
 
@@ -154,17 +154,17 @@ CF URL: `https://codeforces.com/contest/2253` → ID is `2253`.
 Scoring lives in `fetcher/scoring.py` and implements the §4 model:
 
 - **Base points** come from each problem's `(set, slot)` tag in the `problems`
-  table (§4.1) — *not* the Codeforces problem rating. Set A / B / C and slots
+  table (§4.1) - *not* the Codeforces problem rating. Set A / B / C and slots
   1–8 map to the fixed 100–600 table; set totals are 1150 / 2300 / 3450
   (max 6900).
 - **Wrong-answer decay** `max(0.4, 1 - 0.15 · W)` (§4.2). Compilation errors
-  are excluded — the fetcher counts wrong submissions from `contest.status`
+  are excluded - the fetcher counts wrong submissions from `contest.status`
   verdicts and skips `COMPILATION_ERROR`.
 - **First-solver multiplier** 1.20 / 1.12 / 1.06 for the 1st / 2nd / 3rd solver
   of each problem (§4.3).
 
 `problem_results` is a **deterministic projection** recomputed from the stored
-`submissions` on every run, so a formula change just needs a recompute — no
+`submissions` on every run, so a formula change just needs a recompute - no
 manual row resets. After editing constants:
 
 ```bash
@@ -198,7 +198,7 @@ Problems left untagged score at a safe default base (100) until you add them.
 
 `fetcher/recompute.py` is the mandatory override path. It rebuilds every
 `problem_results` row from stored submissions and refreshes the leaderboard
-snapshot — deterministic and re-runnable:
+snapshot - deterministic and re-runnable:
 
 ```bash
 cd fetcher && source .venv/bin/activate
@@ -207,19 +207,19 @@ python recompute.py --csv dump.csv  # import a CSV submission dump, then recompu
 ```
 
 CSV header: `submission_id,handle,cf_contest_id,problem_index,verdict,creation_time_seconds`.
-Use `--csv` when the live CF API path fails mid-contest — keep a fresh dump on
+Use `--csv` when the live CF API path fails mid-contest - keep a fresh dump on
 hand so the fallback is usable within ten minutes.
 
 ### Running the live-engagement features (announcements, schedule, predictions)
 
 The frontend (`frontend/index.html`) reads three organizer-maintained tables
-in addition to the leaderboard. There's no admin UI yet — seed and update
+in addition to the leaderboard. There's no admin UI yet - seed and update
 these directly in the Supabase SQL editor:
 
 **Contest schedule** (drives the phase badge + countdown; one row per phase,
 `phase` is one of `OPEN` / `SET_B` / `SET_C` / `FREEZE` / `REVEAL` / `CLOSE`).
 The board **freezes** at `FREEZE` and shows the T+23h snapshot until `REVEAL`
-(§4.5) — the live standings and per-problem grid stop updating in between. Omit
+(§4.5) - the live standings and per-problem grid stop updating in between. Omit
 the `REVEAL` row and the board simply stays frozen after `FREEZE`.
 
 ```sql
@@ -237,11 +237,11 @@ on conflict (phase) do update set label = excluded.label, at_time = excluded.at_
 
 ```sql
 insert into announcements (body, pinned) values
-  ('Welcome! Set A is live — A1 is a fixed-string warmup, go get your first AC.', true),
+  ('Welcome! Set A is live - A1 is a fixed-string warmup, go get your first AC.', true),
   ('14 people have solved A1 already.', false);
 ```
 
-**Predictions** ("The Bookie's Table" — `options` is a JSON array of
+**Predictions** ("The Bookie's Table" - `options` is a JSON array of
 `{"label": ..., "votes": ...}`; update `votes` by hand as the pool settles):
 
 ```sql
@@ -254,22 +254,22 @@ insert into predictions (question, options, sort_order) values
    2);
 ```
 
-Rank-over-time history needs no manual seeding — `fetcher/main.py` writes a
+Rank-over-time history needs no manual seeding - `fetcher/main.py` writes a
 `leaderboard_snapshots` row per user on every run automatically, once
 `006_engagement.sql` has been applied.
 
 ### Frontend site (newspaper design + tabs)
 
 `frontend/index.html` is a tabbed, single-file site built to the editorial
-"paper & ink" spec in `../design.md` (Leaderboard · Announcements · Info ·
+"paper & ink" spec in `docs/design.md` (Leaderboard · Announcements · Info ·
 Rules · Resources). Beyond the live leaderboard it has:
 
-- **Countdown hero** — set the target in `frontend/config.js`:
+- **Countdown hero** - set the target in `frontend/config.js`:
   `var COUNTDOWN_TARGET = "2026-09-02T10:00:00+05:30";` (with `COUNTDOWN_LABEL`).
   Leave it `null` to fall back to `contest_schedule` (next upcoming phase, else
   `CLOSE`).
-- **Top-5 movement graph** — the front-of-pack view of `leaderboard_snapshots`.
-- **Hidden-challenge circles** — seed `hidden_challenges` (010), then flip `lit`
+- **Top-5 movement graph** - the front-of-pack view of `leaderboard_snapshots`.
+- **Hidden-challenge circles** - seed `hidden_challenges` (010), then flip `lit`
   by hand when a secret is cracked:
 
   ```sql
@@ -279,7 +279,7 @@ Rules · Resources). Beyond the live leaderboard it has:
   update hidden_challenges set lit = true, solved_by = 'qwertyduh', lit_at = now()
     where label = 'Inspect Element';
   ```
-- **Resources tab** — edit the `RESOURCES` array near the top of the inline
+- **Resources tab** - edit the `RESOURCES` array near the top of the inline
   script in `index.html`.
 
 ### Running the test suite

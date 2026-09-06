@@ -3,9 +3,9 @@
 -- 005_submissions.sql (needs the submissions table for the last-AC tiebreaker).
 --
 -- Doc §4.4 ranking order:
---   1. total score            — descending
---   2. total wrong submissions — ascending  (fewer negatives ranks higher)
---   3. timestamp of last scoring submission — ascending
+--   1. total score            - descending
+--   2. total wrong submissions - ascending  (fewer negatives ranks higher)
+--   3. timestamp of last scoring submission - ascending
 --
 -- The old view (003) ordered by total_score only.  This adds the two missing
 -- tiebreakers and the columns they need (total_wrong, last_ac_seconds) so the

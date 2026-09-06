@@ -1,14 +1,14 @@
-"""Pure scoring function for cf-leaderboard — no DB or API dependencies.
+"""Pure scoring function for cf-leaderboard - no DB or API dependencies.
 
 Implements the scoring model from §4 of the contest documentation:
 
 * **Base points** depend on the problem's *set* (A / B / C) and its *slot*
-  (1–8 within that set), per the §4.1 table — NOT on the Codeforces problem
+  (1–8 within that set), per the §4.1 table - NOT on the Codeforces problem
   rating.  A problem's ``(set, slot)`` tag lives in the ``problems`` table and
   is seeded by organizers.
 * **Wrong-answer decay** (§4.2): ``decay(W) = max(0.4, 1 - 0.15 * W)``.
   Compilation errors are excluded upstream (the caller passes a
-  ``wrong_submissions`` count that already omits CEs — see
+  ``wrong_submissions`` count that already omits CEs - see
   ``fetcher/main.py``).
 * **First-solver multiplier** (§4.3): 1.20 / 1.12 / 1.06 for the 1st / 2nd /
   3rd solver of a problem; 1.00 for everyone else.
@@ -86,7 +86,7 @@ def compute_score(
     Parameters
     ----------
     set_name:
-        The problem's set — ``'A'``, ``'B'`` or ``'C'``.  ``None`` (untagged)
+        The problem's set - ``'A'``, ``'B'`` or ``'C'``.  ``None`` (untagged)
         falls back to :data:`DEFAULT_BASE`.
     slot:
         The problem's slot within its set (1–8, easiest to hardest).  ``None``
