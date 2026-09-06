@@ -63,15 +63,17 @@ Every problem statement must contain:
 
 ### 4.1 Base points
 
-| Slot | Set A | Set B | Set C |
-|---|---|---|---|
-| 1–2 | 100 | 200 | 300 |
-| 3–4 | 125 | 250 | 375 |
-| 5–6 | 150 | 300 | 450 |
-| 7–8 | 200 | 400 | 600 |
-| **Set total** | **1150** | **2300** | **3450** |
+Base points rise linearly with a problem's slot (its difficulty order within the contest). Each slot is worth `0.1 x 100 = 10` more than the previous one, starting at 100:
 
-Maximum attainable base score: **6900**.
+```
+base(slot) = 100 + (slot - 1) * 10
+```
+
+| Slot | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Base | 100 | 110 | 120 | 130 | 140 | 150 | 160 | 170 |
+
+Base is **independent of the set** (A / B / C): a later, harder problem always outscores an earlier one, wherever it lives. Maximum attainable base score over 24 problems (three sets of eight): **3 x (100+110+...+170) = 3 x 1080 = 3240**.
 
 ### 4.2 Wrong-answer decay
 
@@ -115,10 +117,10 @@ Scores are rounded to the nearest integer at display time only; all internal com
 2. **Total wrong submissions across the contest** - ascending. *(Fewer negatives ranks higher.)*
 3. **Timestamp of last scoring submission** - ascending.
 
-**Worked example.** Participant solves C5 (base 450) with 2 prior wrong submissions, and is the 2nd solver:
+**Worked example.** Participant solves a slot-5 problem (base 140) with 2 prior wrong submissions, and is the 2nd solver:
 
 ```
-450 * 0.70 * 1.12 = 352.8
+140 * 0.70 * 1.12 = 109.76
 ```
 
 ### 4.5 Leaderboard freeze

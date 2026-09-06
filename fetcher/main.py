@@ -744,6 +744,19 @@ def ingest_contest_submissions(
 # ---------------------------------------------------------------------------
 
 
+def _slot_from_index(problem_index: str) -> Optional[int]:
+    """Derive a 1..8 slot from a CF problem letter (A->1 .. H->8).
+
+    Used as a fallback when a problem is not tagged in the ``problems`` catalog.
+    Returns ``None`` for anything outside a single A-H letter, so the scorer
+    falls back to its default base.
+    """
+    idx = (problem_index or "").strip().upper()
+    if len(idx) == 1 and "A" <= idx <= "H":
+        return ord(idx) - ord("A") + 1
+    return None
+
+
 def _wrong_before_ac(subs_sorted: list[dict], first_ac: Optional[int]) -> int:
     """Count non-CE wrong submissions before the first AC (or all, if unsolved)."""
     n = 0
@@ -830,6 +843,11 @@ def recompute_contest_results(
         tag = catalog.get((contest_uuid, problem_index), {})
         set_name = tag.get("problem_set")
         slot = tag.get("slot")
+        # Fall back to the CF problem letter as the slot (A->1 .. H->8) when the
+        # problem is not tagged in the catalog, so slot-based base points work
+        # without manual seeding.  Base is set-independent (see scoring.py).
+        if slot is None:
+            slot = _slot_from_index(problem_index)
 
         rows: list[dict] = []
         for uid, d in per_user.items():
