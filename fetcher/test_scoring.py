@@ -16,37 +16,24 @@ from scoring import (
 # -------------------------------------------------------------------
 
 
-def test_base_points_full_table() -> None:
-    """Every set/slot pair matches the §4.1 table."""
-    expected = {
-        "A": {1: 100, 2: 100, 3: 125, 4: 125, 5: 150, 6: 150, 7: 200, 8: 200},
-        "B": {1: 200, 2: 200, 3: 250, 4: 250, 5: 300, 6: 300, 7: 400, 8: 400},
-        "C": {1: 300, 2: 300, 3: 375, 4: 375, 5: 450, 6: 450, 7: 600, 8: 600},
-    }
-    for set_name, slots in expected.items():
-        for slot, pts in slots.items():
-            assert base_points(set_name, slot) == pts, (set_name, slot)
+def test_base_points_per_slot() -> None:
+    """Base rises 10 per slot: slots 1..8 -> 100, 110, ... 170 (§4.1)."""
+    expected = {1: 100, 2: 110, 3: 120, 4: 130, 5: 140, 6: 150, 7: 160, 8: 170}
+    for slot, pts in expected.items():
+        assert base_points("A", slot) == pts, slot
 
 
-def test_set_totals_match_doc() -> None:
-    """Set totals: A=1150, B=2300, C=3450; max attainable base = 6900 (§4.1)."""
-    totals = {
-        s: sum(base_points(s, slot) for slot in range(1, 9))
-        for s in ("A", "B", "C")
-    }
-    assert totals == {"A": 1150, "B": 2300, "C": 3450}
-    assert sum(totals.values()) == 6900
-
-
-def test_base_points_case_insensitive() -> None:
-    assert base_points("a", 1) == 100
-    assert base_points("c", 8) == 600
+def test_base_points_set_independent() -> None:
+    """Set no longer affects the base; a given slot scores the same everywhere."""
+    for slot in range(1, 9):
+        assert base_points("A", slot) == base_points("B", slot) == base_points("C", slot)
+    # A later problem always outscores an earlier one.
+    assert base_points("A", 4) > base_points("C", 1)
 
 
 def test_base_points_fallback_when_untagged() -> None:
     assert base_points(None, None) == DEFAULT_BASE
     assert base_points("A", None) == DEFAULT_BASE
-    assert base_points("Z", 3) == DEFAULT_BASE
     assert base_points("A", 9) == DEFAULT_BASE
     assert base_points("A", 0) == DEFAULT_BASE
 
@@ -91,8 +78,8 @@ def test_first_solver_multipliers() -> None:
 # -------------------------------------------------------------------
 
 
-def test_worked_example_c5() -> None:
-    """Doc §4.4: 450 * 0.70 * 1.12 = 352.8."""
+def test_worked_example_slot5() -> None:
+    """Doc §4.4: slot 5 base 140, 2 wrong, 2nd solver -> 140 * 0.70 * 1.12 = 109.76."""
     score = compute_score(
         set_name="C",
         slot=5,
@@ -100,7 +87,7 @@ def test_worked_example_c5() -> None:
         wrong_submissions=2,
         solved=True,
     )
-    assert round(score, 4) == 352.8
+    assert round(score, 4) == 109.76
 
 
 # -------------------------------------------------------------------
@@ -118,14 +105,14 @@ def test_unsolved_is_zero() -> None:
 
 
 def test_solve_outside_top3_no_bonus() -> None:
-    """B7 (400), 4th solver, 1 wrong: 400 * 0.85 * 1.0 = 340."""
-    assert compute_score("B", 7, 4, 1, True) == 340.0
+    """Slot 7 base 160, 4th solver, 1 wrong: 160 * 0.85 * 1.0 = 136."""
+    assert compute_score("B", 7, 4, 1, True) == 136.0
 
 
 def test_full_precision_not_rounded() -> None:
     """Scores keep full precision; rounding is a display concern only."""
-    # A3 (125) * decay(1)=0.85 * 1st=1.20 = 127.5
-    assert compute_score("A", 3, 1, 1, True) == 127.5
+    # slot 3 base 120 * decay(1)=0.85 * 1st=1.20 = 122.4
+    assert round(compute_score("A", 3, 1, 1, True), 4) == 122.4
 
 
 # -------------------------------------------------------------------

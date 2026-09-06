@@ -24,15 +24,16 @@ from typing import Optional
 # tunable constants (§4)
 # ---------------------------------------------------------------------------
 
-# §4.1 base-points table.  Each set maps to four difficulty tiers covering
-# slot pairs (1-2), (3-4), (5-6), (7-8).
-_SET_BASE_TIERS: dict[str, tuple[int, int, int, int]] = {
-    "A": (100, 125, 150, 200),
-    "B": (200, 250, 300, 400),
-    "C": (300, 375, 450, 600),
-}
+# §4.1 base points.  Base rises linearly with the problem's slot (difficulty
+# order within the contest): each slot is worth 0.1 x 100 = 10 more than the
+# previous one, so slots 1..8 map to 100, 110, 120, ... 180.  Base is
+# independent of the set (A / B / C) - a later, harder problem always outscores
+# an earlier one regardless of which set it lives in.
+BASE_START = 100  # slot 1 base
+BASE_STEP = 10    # per-slot increment (0.1 x BASE_START)
+MAX_SLOT = 8
 
-DEFAULT_BASE = 100  # fallback base when a problem has no (set, slot) tag yet
+DEFAULT_BASE = 100  # fallback base when a problem has no slot tag yet
 
 # §4.2 wrong-answer decay.
 WRONG_FLOOR = 0.40       # decay cannot drop below this
@@ -48,16 +49,17 @@ FIRST_SOLVER_MULTIPLIERS: dict[int, float] = {1: 1.20, 2: 1.12, 3: 1.06}
 
 
 def base_points(set_name: Optional[str], slot: Optional[int]) -> int:
-    """Return the §4.1 base points for a problem's ``(set, slot)``.
+    """Return the §4.1 base points for a problem's ``slot``.
 
-    Falls back to :data:`DEFAULT_BASE` when the set is unknown or the slot is
-    out of the 1–8 range (e.g. a problem that organizers have not tagged in the
-    ``problems`` table yet).
+    Base is ``BASE_START + (slot - 1) * BASE_STEP`` for slots 1..8 (100, 110,
+    ... 180), independent of the set. ``set_name`` is accepted for call-site
+    compatibility but no longer affects the base. Falls back to
+    :data:`DEFAULT_BASE` when the slot is missing or out of the 1-8 range (e.g.
+    a problem that organizers have not tagged yet).
     """
-    tiers = _SET_BASE_TIERS.get((set_name or "").strip().upper())
-    if tiers is None or slot is None or slot < 1 or slot > 8:
+    if slot is None or slot < 1 or slot > MAX_SLOT:
         return DEFAULT_BASE
-    return tiers[(slot - 1) // 2]
+    return BASE_START + (slot - 1) * BASE_STEP
 
 
 def decay(wrong_submissions: int) -> float:
