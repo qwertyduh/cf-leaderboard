@@ -297,6 +297,18 @@ a:hover { color: var(--accent); }
 .circle.lit + .circle-label { color: var(--ink); }
 .circles-meta { font-family: var(--font-mono); font-size: var(--fs-small); color: var(--ink-muted); margin-top: var(--space-3); }
 
+/* 5x5 hidden-lights grid */
+.circles-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: clamp(0.5rem, 1.8vw, 1rem); max-width: 340px; }
+.cell {
+  aspect-ratio: 1 / 1; border-radius: 50%;
+  border: 1.5px solid var(--line-strong); background: transparent;
+  transition: background 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease;
+}
+.cell.lit {
+  background: var(--accent); border-color: var(--accent-deep); cursor: help;
+  box-shadow: 0 0 0 4px rgba(152,118,84,0.18), 0 0 18px -2px rgba(152,118,84,0.6);
+}
+
 /* ==========================================================================
    announcements feed (§6.3)
    ========================================================================== */
@@ -478,11 +490,9 @@ a:hover { color: var(--accent); }
       <div>
         <div class="section-head">
           <h2></span>Hidden lights</h2>
-          <p class="section-sub">Each circle is a secret side quest. It glows the moment someone cracks it.</p>
+          <p class="section-sub">Every light is a secret someone cracked. Hover one to see who got there first.</p>
         </div>
-        <div class="circles" id="circles">
-          <p class="empty">The side-quest board wakes up once the first secret is planted.</p>
-        </div>
+        <div class="circles-grid" id="circles"></div>
         <p class="circles-meta" id="circlesMeta"></p>
       </div>
     </div>
@@ -901,27 +911,39 @@ function loadGraph(currentRows, untilIso) {
 // ---------------------------------------------------------------------------
 // hidden-challenge circles (feature 5)
 // ---------------------------------------------------------------------------
+var HIDDEN_GRID = 25;  // 5x5
+
 function renderCircles(rows) {
   var el = document.getElementById("circles");
   var meta = document.getElementById("circlesMeta");
-  if (!rows.length) {
-    el.innerHTML = '<p class="empty">The side-quest board wakes up once the first secret is planted.</p>';
-    meta.textContent = "";
-    return;
+  var litRows = (rows || []).filter(function (c) { return c.lit; });
+
+  // Place each lit secret at a stable-but-scattered cell, derived from a hash
+  // of its solver's handle so the light does not jump around between polls.
+  var cellHandle = {};
+  litRows.forEach(function (c) {
+    var key = c.solved_by || c.label || "x";
+    var h = 0;
+    for (var i = 0; i < key.length; i++) { h = (h * 31 + key.charCodeAt(i)) >>> 0; }
+    var pos = h % HIDDEN_GRID;
+    while (cellHandle[pos] !== undefined) { pos = (pos + 1) % HIDDEN_GRID; }
+    cellHandle[pos] = c.solved_by || "solved";
+  });
+
+  var cells = [];
+  for (var i = 0; i < HIDDEN_GRID; i++) {
+    if (cellHandle[i] !== undefined) {
+      cells.push('<div class="cell lit" title="' + escapeHtml(cellHandle[i]) + '"></div>');
+    } else {
+      cells.push('<div class="cell" aria-hidden="true"></div>');
+    }
   }
-  var lit = 0;
-  el.innerHTML = rows.map(function (c, i) {
-    if (c.lit) lit++;
-    var num = i + 1;
-    var title = c.lit
-      ? escapeHtml(c.label) + (c.solved_by ? " - cracked by " + escapeHtml(c.solved_by) : " - solved")
-      : escapeHtml(c.hint || "still hidden");
-    return '<div class="circle-item">'
-      + '<div class="circle ' + (c.lit ? "lit" : "") + '" title="' + title + '">' + (c.lit ? "✦" : num) + "</div>"
-      + '<div class="circle-label">' + (c.lit ? escapeHtml(c.label) : "???") + "</div>"
-      + "</div>";
-  }).join("");
-  meta.textContent = lit + " of " + rows.length + " secrets found";
+  el.innerHTML = cells.join("");
+
+  var n = litRows.length;
+  meta.textContent = n
+    ? (n === 1 ? "1 light is on. Keep looking." : n + " lights are on. Keep looking.")
+    : "";
 }
 
 function loadCircles() {
