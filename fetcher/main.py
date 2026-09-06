@@ -294,8 +294,13 @@ def fetch_contest_standings(
                 contest_id,
             )
             return None
+        # asManager=true is required for group/mashup contests: without it a
+        # running contest with frozen standings returns 0 rows to the caller.
         url = build_signed_url(
-            "contest.standings", {"contestId": contest_id}, api_key, api_secret
+            "contest.standings",
+            {"contestId": contest_id, "asManager": "true"},
+            api_key,
+            api_secret,
         )
     else:
         url = f"{CF_BASE_URL}/contest.standings?contestId={contest_id}"
@@ -319,9 +324,16 @@ def build_status_url(
     if authenticated:
         if not api_key or not api_secret:
             return None
+        # asManager=true is required for group/mashup contests: without it a
+        # running contest with frozen standings returns 0 submissions.
         return build_signed_url(
             "contest.status",
-            {"contestId": contest_id, "from": from_idx, "count": count},
+            {
+                "contestId": contest_id,
+                "from": from_idx,
+                "count": count,
+                "asManager": "true",
+            },
             api_key,
             api_secret,
         )
