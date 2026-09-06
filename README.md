@@ -261,7 +261,7 @@ Rank-over-time history needs no manual seeding - `fetcher/main.py` writes a
 ### Frontend site (newspaper design + tabs)
 
 `frontend/index.html` is a tabbed, single-file site built to the editorial
-"paper & ink" spec in `../design.md` (Leaderboard · Announcements · Info ·
+"paper & ink" spec in `docs/design.md` (Leaderboard · Announcements · Info ·
 Rules · Resources). Beyond the live leaderboard it has:
 
 - **Countdown hero** - set the target in `frontend/config.js`:

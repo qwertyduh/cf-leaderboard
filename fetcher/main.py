@@ -1,6 +1,6 @@
 """cf-leaderboard fetcher - pulls Codeforces data and writes to Supabase.
 
-Design (per contest-documentation.md §4, §5):
+Design (per docs/contest-documentation.md §4, §5):
 
 * **contest.status is the scoring source (§5.2).**  Every judged submission
   (accepted *and* rejected) is ingested into the ``submissions`` table.  The
