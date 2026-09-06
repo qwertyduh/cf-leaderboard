@@ -421,8 +421,6 @@ a:hover { color: var(--accent); }
     <div class="hero">
       <h1>Every <em>second</em> counts</h1>
       <div class="countdown" id="countdown" aria-live="polite">
-        <div class="cd-unit"><div class="cd-num" id="cdDays">--</div><div class="cd-label">days</div></div>
-        <div class="cd-sep">:</div>
         <div class="cd-unit"><div class="cd-num" id="cdHours">--</div><div class="cd-label">hours</div></div>
         <div class="cd-sep">:</div>
         <div class="cd-unit"><div class="cd-num" id="cdMins">--</div><div class="cd-label">minutes</div></div>
@@ -717,13 +715,11 @@ function renderCountdown() {
     return;
   }
   var s = Math.floor(diff / 1000);
-  var d = Math.floor(s / 86400); s -= d * 86400;
-  var h = Math.floor(s / 3600);  s -= h * 3600;
+  var h = Math.floor(s / 3600);  s -= h * 3600;  // hours can exceed 24
   var m = Math.floor(s / 60);    s -= m * 60;
-  var days = document.getElementById("cdDays");
-  if (!days) return; // grid was replaced by the done-state
-  days.textContent = pad(d);
-  document.getElementById("cdHours").textContent = pad(h);
+  var hours = document.getElementById("cdHours");
+  if (!hours) return; // grid was replaced by the done-state
+  hours.textContent = pad(h);
   document.getElementById("cdMins").textContent = pad(m);
   document.getElementById("cdSecs").textContent = pad(s);
   cap.textContent = tgt.label || "";
